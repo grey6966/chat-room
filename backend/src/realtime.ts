@@ -1,7 +1,16 @@
 import type { Server as HttpServer } from 'node:http';
 import { Server } from 'socket.io';
 import { config } from './config.js';
-import { getChannelHistory, getDirectHistory, insertMessage, type MessageRow } from './db.js';
+import {
+  getChannelHistory,
+  getDirectHistory,
+  getLatestChannelId,
+  getReadCounts,
+  getReaders,
+  insertMessage,
+  markChannelReadThrough,
+  type MessageRow,
+} from './db.js';
 import { rateLimited, resetRateLimit } from './rateLimit.js';
 import {
   createSession,
@@ -23,6 +32,18 @@ function serialize(row: MessageRow): ChatMessage {
     content: row.content,
     createdAt: row.created_at,
   };
+}
+
+/** Serialize channel messages with their per-message reader counts. */
+function serializeChannel(rows: MessageRow[]): ChatMessage[] {
+  if (rows.length === 0) return [];
+  const counts = getReadCounts(rows.map((r) => r.id));
+  return rows.map((row) => {
+    const message = serialize(row);
+    const count = counts.get(row.id);
+    if (count) message.readByCount = count;
+    return message;
+  });
 }
 
 function cleanContent(raw: unknown): string | null {
@@ -113,7 +134,9 @@ export function attachRealtime(httpServer: HttpServer): Server {
         online.set(username, socket.id);
         socket.join([CHANNEL, `user:${username}`]);
 
-        const history = getChannelHistory(config.defaultHistoryLimit).map(serialize);
+        // Opening the hall marks existing history as read by the newcomer.
+        markChannelReadThrough(username, getLatestChannelId());
+        const history = serializeChannel(getChannelHistory(config.defaultHistoryLimit));
         const presence = [...online.keys()].sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'));
 
         ack({ ok: true, session, presence, history });
@@ -125,6 +148,13 @@ export function attachRealtime(httpServer: HttpServer): Server {
           createdAt: Date.now(),
         });
         broadcastPresence();
+
+        // Refresh reader counts on already-connected clients.
+        const counts: Record<string, number> = {};
+        for (const message of history) {
+          if (message.readByCount) counts[message.id] = message.readByCount;
+        }
+        io.to(CHANNEL).emit('channel:reads', counts);
       }
     );
 
@@ -139,6 +169,42 @@ export function attachRealtime(httpServer: HttpServer): Server {
       const row = insertMessage('channel', session.username, null, content);
       io.to(CHANNEL).emit('channel:message', serialize(row));
     });
+
+    // The client reports the highest channel message id currently visible.
+    // New receipts (and only those) are broadcast so senders update counts.
+    socket.on('channel:read', (payload: { upTo?: unknown } | undefined) => {
+      const session = socket.data.session as Session | undefined;
+      if (!session) return;
+
+      const upTo = payload?.upTo;
+      if (typeof upTo !== 'number' || !Number.isFinite(upTo)) return;
+
+      const newReads = markChannelReadThrough(session.username, Math.floor(upTo));
+      if (newReads.length === 0) return;
+
+      const counts = getReadCounts(newReads);
+      const update: Record<string, number> = {};
+      for (const [id, count] of counts) update[id] = count;
+      io.to(CHANNEL).emit('channel:reads', update);
+    });
+
+    socket.on(
+      'channel:readers',
+      (
+        payload: { messageId?: unknown } | undefined,
+        ack?: (response: { ok: true; readers: string[] } | { ok: false; error: string }) => void
+      ) => {
+        if (typeof ack !== 'function') return;
+        const session = socket.data.session as Session | undefined;
+        if (!session) return ack({ ok: false, error: '未加入聊天室' });
+
+        const messageId = payload?.messageId;
+        if (typeof messageId !== 'number' || !Number.isInteger(messageId)) {
+          return ack({ ok: false, error: '消息 ID 不合法' });
+        }
+        ack({ ok: true, readers: getReaders(messageId) });
+      }
+    );
 
     socket.on(
       'direct:message',

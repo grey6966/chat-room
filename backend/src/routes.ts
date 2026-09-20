@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { config } from './config.js';
-import { getChannelHistory, getDirectHistory, type MessageRow } from './db.js';
+import { getChannelHistory, getDirectHistory, getReadCounts, type MessageRow } from './db.js';
 import {
   getSession,
   isValidUsername,
@@ -58,9 +58,15 @@ export function registerApiRoutes(app: FastifyInstance): void {
     async (request, reply) => {
       const paging = parsePaging(request.query);
       if (!paging) return reply.code(400).send({ error: '分页参数不合法' });
-      return {
-        messages: getChannelHistory(paging.limit, paging.before).map(serialize),
-      };
+      const rows = getChannelHistory(paging.limit, paging.before);
+      const counts = getReadCounts(rows.map((r) => r.id));
+      const messages = rows.map((row) => {
+        const message = serialize(row);
+        const count = counts.get(row.id);
+        if (count) message.readByCount = count;
+        return message;
+      });
+      return { messages };
     }
   );
 

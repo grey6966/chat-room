@@ -70,6 +70,44 @@ async function main(): Promise<void> {
   check('channel message broadcast to bob', m1.sender === aliceName && m1.content.includes('hello'));
   check('channel message echoed to sender', m2.id === m1.id && m2.type === 'channel');
 
+  // --- read receipts ---
+  const readsUpdate = new Promise<Record<string, number>>((res) => {
+    alice.once('channel:reads', res);
+  });
+  bob.emit('channel:read', { upTo: m1.id });
+  const reads = await readsUpdate;
+  check(
+    'read receipt updates count for the sender',
+    reads[m1.id] === 1,
+    JSON.stringify(reads)
+  );
+
+  const readersAck = (await alice
+    .timeout(5000)
+    .emitWithAck('channel:readers', { messageId: m1.id })) as any;
+  check(
+    'readers list contains bob but not sender',
+    readersAck.ok &&
+      readersAck.readers.includes(bobName) &&
+      !readersAck.readers.includes(aliceName),
+    JSON.stringify(readersAck.readers)
+  );
+
+  // Reporting the same position again is idempotent (no new rows/events).
+  let extraBroadcast = false;
+  const onExtra = (): boolean => (extraBroadcast = true);
+  alice.on('channel:reads', onExtra);
+  bob.emit('channel:read', { upTo: m1.id });
+  await wait(300);
+  check('duplicate read report is idempotent', extraBroadcast === false);
+  alice.off('channel:reads', onExtra);
+
+  // Invalid payloads are ignored rather than crashing the socket.
+  bob.emit('channel:read', { upTo: 'not-a-number' });
+  bob.emit('channel:read', {});
+  await wait(150);
+  check('malformed read events ignored', alice.connected && bob.connected);
+
   // --- direct message only reaches the two peers ---
   let bobGot = false;
   let aliceGot = false;
