@@ -5,6 +5,8 @@ export interface ChatMessage {
   recipient: string | null;
   content: string;
   createdAt: number;
+  /** Channel messages: number of users who have read the message. */
+  readBy?: number;
 }
 
 export interface Session {
@@ -31,4 +33,8 @@ export interface JoinOk {
 export interface JoinErr {
   ok: false;
   error: string;
+}
+
+export interface ReadReceiptsUpdate {
+  counts: Record<string, number>;
 }

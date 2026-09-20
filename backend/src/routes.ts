@@ -1,6 +1,11 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { config } from './config.js';
-import { getChannelHistory, getDirectHistory, type MessageRow } from './db.js';
+import {
+  getChannelHistory,
+  getChannelReadCounts,
+  getDirectHistory,
+  type MessageRow,
+} from './db.js';
 import {
   getSession,
   isValidUsername,
@@ -25,6 +30,12 @@ function serialize(row: MessageRow): ChatMessage {
     content: row.content,
     createdAt: row.created_at,
   };
+}
+
+/** Channel rows with read counts attached in a single query. */
+function serializeChannel(rows: MessageRow[]): ChatMessage[] {
+  const counts = getChannelReadCounts(rows.map((r) => r.id));
+  return rows.map((row) => ({ ...serialize(row), readBy: counts.get(row.id) ?? 0 }));
 }
 
 function authenticate(request: FastifyRequest, reply: FastifyReply): void {
@@ -59,7 +70,7 @@ export function registerApiRoutes(app: FastifyInstance): void {
       const paging = parsePaging(request.query);
       if (!paging) return reply.code(400).send({ error: '分页参数不合法' });
       return {
-        messages: getChannelHistory(paging.limit, paging.before).map(serialize),
+        messages: serializeChannel(getChannelHistory(paging.limit, paging.before)),
       };
     }
   );

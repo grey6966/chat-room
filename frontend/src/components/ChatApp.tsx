@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Socket } from 'socket.io-client';
 import { fetchDirectHistory } from '../api.js';
-import type { ChatMessage, ChatNotice, Presence, Session } from '../types.js';
+import type { ChatMessage, ChatNotice, Presence, ReadReceiptsUpdate, Session } from '../types.js';
 import Sidebar from './Sidebar.js';
 import MessageList from './MessageList.js';
 import Composer from './Composer.js';
@@ -24,6 +24,18 @@ function appendUnique(list: ChatMessage[], message: ChatMessage): ChatMessage[] 
   if (list.some((m) => m.id === message.id)) return list;
   const next = [...list, message];
   return next.length > MAX_BUFFERED ? next.slice(next.length - MAX_BUFFERED) : next;
+}
+
+/** Merge a batch of read counts into a channel message list. */
+function applyReceipts(list: ChatMessage[], counts: Record<string, number>): ChatMessage[] {
+  let changed = false;
+  const next = list.map((m) => {
+    const n = counts[String(m.id)];
+    if (n === undefined || m.readBy === n) return m;
+    changed = true;
+    return { ...m, readBy: n };
+  });
+  return changed ? next : list;
 }
 
 export default function ChatApp({
@@ -56,6 +68,9 @@ export default function ChatApp({
     const onChannelMessage = (message: ChatMessage) =>
       setChannelMessages((prev) => appendUnique(prev, message));
 
+    const onReceipts = (update: ReadReceiptsUpdate) =>
+      setChannelMessages((prev) => applyReceipts(prev, update.counts));
+
     const onDirectMessage = (message: ChatMessage) => {
       const peer =
         message.sender === session.username ? message.recipient ?? '' : message.sender;
@@ -72,11 +87,13 @@ export default function ChatApp({
     socket.on('presence', onPresence);
     socket.on('notice', onNotice);
     socket.on('channel:message', onChannelMessage);
+    socket.on('channel:receipts', onReceipts);
     socket.on('direct:message', onDirectMessage);
     return () => {
       socket.off('presence', onPresence);
       socket.off('notice', onNotice);
       socket.off('channel:message', onChannelMessage);
+      socket.off('channel:receipts', onReceipts);
       socket.off('direct:message', onDirectMessage);
     };
   }, [socket, session.username]);
@@ -204,6 +221,7 @@ export default function ChatApp({
               currentUser={session.username}
               messages={channelMessages}
               notices={notices}
+              socket={socket}
               emptyText="还没有消息，来发出第一条消息吧！"
             />
             <Composer

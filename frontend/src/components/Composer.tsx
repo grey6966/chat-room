@@ -1,5 +1,6 @@
-import { useRef, useState, type KeyboardEvent } from 'react';
+import { useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent } from 'react';
 import { uploadImage } from '../api.js';
+import { renderMarkdown } from '../lib/markdown.js';
 
 interface ComposerProps {
   token: string;
@@ -52,8 +53,11 @@ export default function Composer({
   const [value, setValue] = useState('');
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [preview, setPreview] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const previewHtml = useMemo(() => renderMarkdown(value || '_暂无内容_', true), [value]);
 
   function insertText(text: string): void {
     const el = textareaRef.current;
@@ -77,6 +81,9 @@ export default function Composer({
     const selected = el ? value.slice(el.selectionStart, el.selectionEnd) : '';
     const { text } = tool.apply(selected);
     insertText(text);
+    // The code-block tool inserts a fence; reveal the rendered result
+    // immediately instead of leaving the user staring at ``` markers.
+    if (tool.title === '代码块') setPreview(true);
   }
 
   function send(): void {
@@ -85,6 +92,7 @@ export default function Composer({
     onSend(content);
     setValue('');
     setError(null);
+    setPreview(false);
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>): void {
@@ -94,26 +102,50 @@ export default function Composer({
     }
   }
 
-  async function handleFile(file: File | undefined): Promise<void> {
-    if (!file) return;
+  async function handleFile(file: File | undefined): Promise<boolean> {
+    if (!file) return false;
     if (!file.type.startsWith('image/')) {
       setError('只能上传图片文件');
-      return;
+      return false;
     }
     if (file.size > 5 * 1024 * 1024) {
       setError('图片不能超过 5 MB');
-      return;
+      return false;
     }
     setUploading(true);
     setError(null);
     try {
       const url = await uploadImage(token, file);
-      insertText(`\n![${file.name.replace(/[\[\]]/g, '')}](${url})\n`);
+      const safeName = (file.name || 'pasted-image').replace(/[\[\]]/g, '');
+      insertText(`\n![${safeName}](${url})\n`);
+      return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : '图片上传失败');
+      return false;
     } finally {
       setUploading(false);
       if (fileRef.current) fileRef.current.value = '';
+    }
+  }
+
+  /** Clipboard paste: screenshots (and copied images) upload directly. */
+  function onPaste(event: ClipboardEvent<HTMLTextAreaElement>): void {
+    const items = event.clipboardData?.items;
+    if (!items) return;
+    for (const item of items) {
+      if (item.kind === 'file' && item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (file) {
+          event.preventDefault();
+          const ext = file.type.split('/')[1]?.replace('jpeg', 'jpg') ?? 'png';
+          // Screenshots usually arrive as nameless blobs; give them one.
+          const named = new File([file], file.name || `pasted-${Date.now()}.${ext}`, {
+            type: file.type,
+          });
+          void handleFile(named);
+          return;
+        }
+      }
     }
   }
 
@@ -136,7 +168,7 @@ export default function Composer({
         <button
           type="button"
           className="tool-button"
-          title="上传图片（PNG / JPEG / GIF / WebP，≤5MB）"
+          title="上传图片（PNG / JPEG / GIF / WebP，≤5MB），也可直接粘贴截图"
           disabled={disabled || uploading}
           onClick={() => fileRef.current?.click()}
         >
@@ -149,20 +181,44 @@ export default function Composer({
           hidden
           onChange={(e) => void handleFile(e.target.files?.[0])}
         />
-        <span className="composer-hint">支持 Markdown</span>
+        <button
+          type="button"
+          className={`tool-button preview-toggle ${preview ? 'active' : ''}`}
+          title={preview ? '切换回 Markdown 编辑' : '实时预览富文本效果'}
+          disabled={disabled || uploading}
+          onClick={() => setPreview((v) => !v)}
+        >
+          {preview ? '✏️ 编辑' : '👁 预览'}
+        </button>
+        <span className="composer-hint">支持 Markdown · 可直接粘贴图片</span>
       </div>
 
       <div className="composer-row">
-        <textarea
-          ref={textareaRef}
-          className="composer-input"
-          value={value}
-          placeholder={disabled ? disabledHint ?? placeholder : placeholder}
-          disabled={disabled}
-          rows={3}
-          onChange={(e) => setValue(e.target.value)}
-          onKeyDown={onKeyDown}
-        />
+        <div className="composer-editor">
+          <textarea
+            ref={textareaRef}
+            className="composer-input"
+            value={value}
+            placeholder={disabled ? disabledHint ?? placeholder : placeholder}
+            disabled={disabled}
+            rows={3}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={onKeyDown}
+            onPaste={onPaste}
+            hidden={preview}
+          />
+          {preview && (
+            <div
+              className="composer-preview markdown-body"
+              title="点击返回编辑"
+              onClick={() => {
+                setPreview(false);
+                requestAnimationFrame(() => textareaRef.current?.focus());
+              }}
+              dangerouslySetInnerHTML={{ __html: previewHtml }}
+            />
+          )}
+        </div>
         <button
           type="button"
           className="send-button"
