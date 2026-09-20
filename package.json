@@ -1,0 +1,14 @@
+{
+  "name": "chat-room",
+  "version": "1.0.0",
+  "private": true,
+  "description": "高并发在线聊天室（React + Node.js + Socket.IO + SQLite）",
+  "scripts": {
+    "dev:server": "npm --prefix server run dev",
+    "dev:web": "npm --prefix web run dev",
+    "build:server": "npm --prefix server run build",
+    "build:web": "npm --prefix web run build",
+    "docker:up": "docker compose up --build",
+    "docker:down": "docker compose down"
+  }
+}

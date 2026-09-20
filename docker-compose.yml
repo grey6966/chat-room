@@ -1,0 +1,21 @@
+services:
+  chat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: chat-room:latest
+    container_name: chat-room
+    ports:
+      - "3000:3000"
+    volumes:
+      - chat-data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  chat-data:
