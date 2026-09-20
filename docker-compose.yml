@@ -1,0 +1,27 @@
+services:
+  chatroom:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: chat-room:latest
+    container_name: chat-room
+    ports:
+      - "${HOST_PORT:-3000}:3001"
+    volumes:
+      - chat-data:/app/data
+    restart: unless-stopped
+    # A single Node process with a WAL SQLite writer handles thousands of
+    # concurrent WebSocket connections comfortably for this workload.
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3001/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  chat-data:
