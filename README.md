@@ -39,10 +39,8 @@ npm install
 npm run dev
 ```
 
-**端口占用自动切换**：如果默认端口已被占用，后端会自动尝试 3002、3003…
-（最多 10 个），前端 Vite 同理自动选用下一个可用端口。后端把实际监听端口
-写入 `backend/.dev-port`，前端开发代理每次请求动态读取该文件，因此后端
-换端口无需重启前端。
+- 端口被占用时会自动顺延：后端在 3001 被占用时自动尝试 3002、3003…（最多 10 个），前端 Vite 同理顺延 5174…
+- 若后端改用其他端口，前端通过环境变量指定代理目标：`VITE_BACKEND_URL=http://localhost:3002 npm run dev`
 
 ## 功能清单
 
@@ -54,19 +52,13 @@ npm run dev
 6. **图片 / 富文本 / 代码块**：
    - 工具栏一键插入加粗、斜体、删除线、链接、引用、列表、行内代码、围栏代码块
    - 代码块按语言语法高亮，带语言标签与一键复制
-   - 输入框支持「编辑 / 预览」切换：插入代码块后自动进入实时预览，代码块以
-     高亮样式渲染，而不是展示 ```` ``` ```` 源码
-   - 图片可点击工具栏上传，也可直接 **Ctrl/⌘+V 粘贴剪贴板截图**
-     （PNG/JPEG/GIF/WebP，≤5MB），自动上传后插入消息；上传在原生 HTTP 层
-     用 busboy 流式解析，服务端校验真实文件头，防可执行文件伪装
+   - 输入框支持 **编辑 / 分屏 / 预览** 三种模式：插入围栏代码块后自动进入分屏，右侧实时渲染高亮后的代码块样式，而不是只显示 Markdown 源码
+   - 图片通过 `POST /api/upload` 上传（PNG/JPEG/GIF/WebP，≤5MB），在原生 HTTP 层用 busboy 流式解析，服务端校验真实文件头，防可执行文件伪装
+   - 支持直接 **Ctrl/⌘+V 粘贴剪贴板图片** 或拖拽图片到输入框，自动上传并插入
    - 消息按 Markdown 渲染并经 DOMPurify 消毒，防 XSS；图片可点击放大
-7. **日间 / 夜间主题**：右上角按钮在「跟随系统 → 日间 → 夜间」之间循环，
-   跟随系统模式下通过 `prefers-color-scheme` 自动响应系统深浅色切换，选择
-   持久化到 localStorage
-8. **已读回执（群聊）**：自己发送的消息下方显示「N 人已读 / 未读」，点击可
-   查看已读用户名列表；停留在大厅底部即自动上报已读位置
-9. **回到底部**：消息列表滚动离开底部时，底部浮现「↓ 回到底部」按钮，点击
-   平滑滚回最新消息
+7. **已读回执**：群聊消息下方显示已读人数（✓✓ n 人已读 / 未读），点击可查看已读用户名列表；回执落库 SQLite，刷新与新加入用户均会计数（发送者不计入）
+8. **日 / 夜间模式**：顶栏切换「自动跟随系统 → 日间 → 夜间」，自动模式实时响应系统深浅色变化，首屏无主题闪烁，偏好持久化
+9. **阅读体验**：消息头像与昵称顶线对齐；向上滚动离开底部时出现「回到底部」悬浮按钮，点击平滑滚回最新消息
 
 ## 高并发设计要点
 
@@ -88,20 +80,19 @@ frontend/                 React SPA
   src/
     App.tsx               登录 / 重连状态机
     components/           Login、ChatApp、Sidebar、MessageList、Composer
-    lib/                  Markdown 渲染消毒、格式化
+    lib/                  Markdown 渲染消毒、格式化、主题（日/夜间）
 backend/
   src/
-    index.ts      入口
+    index.ts      入口（端口占用自动顺延）
     app.ts        Fastify（REST / 静态资源 / 上传劫持）
     realtime.ts   Socket.IO（加入、群聊、私聊、presence、已读回执、断线恢复）
     rawUpload.ts  原生 HTTP 层 busboy 图片上传（Fastify onRequest 劫持）
-    db.ts         SQLite 初始化、WAL 调优、消息查询、已读回执表
+    db.ts         SQLite 初始化、WAL 调优、消息与已读查询（messages / message_reads）
     session.ts    内存会话与用户名校验
     rateLimit.ts  滑动窗口限流
     routes.ts     历史记录 REST API
   scripts/
-    smoke.ts      端到端功能测试（19 项）
-    receipts.ts   已读回执端到端测试
+    smoke.ts      端到端功能测试（24 项，含已读回执）
     reconnect.ts  重连 / 用户名接管测试
     loadtest.ts   高并发压测
 Dockerfile        前端构建 → 后端构建 → 运行时（非 root 用户）

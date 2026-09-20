@@ -8,50 +8,42 @@ import { attachRealtime } from './realtime.js';
 const MAX_PORT_TRIES = 10;
 
 /**
- * Record the actual listening port for `vite dev`'s dynamic proxy. Only
- * meaningful in local development; failure (e.g. read-only container FS)
- * is harmless and ignored.
+ * Listen on the configured port; if it is already taken, retry on the next
+ * free ports so local development never dies with EADDRINUSE.
  */
-async function publishDevPort(port: number): Promise<void> {
-  try {
-    await writeFile(resolve(process.cwd(), '.dev-port'), String(port), 'utf8');
-  } catch {
-    // ignore
-  }
-}
-
 async function listenWithFallback(
-  app: ReturnType<typeof createApp>,
+  server: ReturnType<typeof createApp>,
   port: number,
   host: string
 ): Promise<number> {
   for (let attempt = 0; attempt < MAX_PORT_TRIES; attempt++) {
     const candidate = port + attempt;
     try {
-      await app.listen({ port: candidate, host });
+      await server.listen({ port: candidate, host });
       if (attempt > 0) {
-        app.log.warn(`端口 ${port} 被占用，已自动切换到 ${candidate}`);
+        server.log.warn(
+          `port ${port} was busy, server started on http://${host}:${candidate} instead`
+        );
       }
       return candidate;
     } catch (error) {
       const code = (error as { code?: string }).code;
       if (code === 'EADDRINUSE' && attempt < MAX_PORT_TRIES - 1) {
-        app.log.warn(`端口 ${candidate} 被占用，尝试 ${candidate + 1}…`);
+        server.log.warn(`port ${candidate} is in use, trying ${candidate + 1}…`);
         continue;
       }
       throw error;
     }
   }
-  return port;
+  throw new Error('no free port found');
 }
 
 async function main(): Promise<void> {
   const app = createApp();
   attachRealtime(app.server);
 
-  const port = await listenWithFallback(app, config.port, config.host);
-  app.log.info(`chat server listening on http://${config.host}:${port}`);
-  await publishDevPort(port);
+  const actualPort = await listenWithFallback(app, config.port, config.host);
+  app.log.info(`chat server listening on http://${config.host}:${actualPort}`);
 }
 
 main().catch((error) => {

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent } from 'react';
+import { useRef, useState, type ClipboardEvent, type KeyboardEvent } from 'react';
 import { uploadImage } from '../api.js';
 import { renderMarkdown } from '../lib/markdown.js';
 
@@ -43,6 +43,10 @@ const TOOLS: Tool[] = [
   },
 ];
 
+type ViewMode = 'edit' | 'split' | 'preview';
+
+const FENCE_RE = /```/;
+
 export default function Composer({
   token,
   placeholder,
@@ -53,11 +57,18 @@ export default function Composer({
   const [value, setValue] = useState('');
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [preview, setPreview] = useState(false);
+  const [view, setView] = useState<ViewMode>('edit');
+  const [pasteActive, setPasteActive] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const previewHtml = useMemo(() => renderMarkdown(value || '_暂无内容_', true), [value]);
+  // Switch to a side-by-side view automatically once the draft contains a
+  // fenced code block, so the highlighted block is previewed in real time.
+  // With an empty draft, always show the textarea so input is never blocked.
+  const hasCodeBlock = FENCE_RE.test(value);
+  let effectiveView: ViewMode =
+    view === 'edit' && hasCodeBlock ? 'split' : view === 'split' && !hasCodeBlock ? 'edit' : view;
+  if (!value.trim() && effectiveView === 'preview') effectiveView = 'edit';
 
   function insertText(text: string): void {
     const el = textareaRef.current;
@@ -102,8 +113,7 @@ export default function Composer({
     }
   }
 
-  async function handleFile(file: File | undefined): Promise<boolean> {
-    if (!file) return false;
+  async function uploadAndEmbed(file: File): Promise<void> {
     if (!file.type.startsWith('image/')) {
       setError('只能上传图片文件');
       return false;
@@ -128,7 +138,12 @@ export default function Composer({
     }
   }
 
-  /** Clipboard paste: screenshots (and copied images) upload directly. */
+  async function handleFile(file: File | undefined): Promise<void> {
+    if (!file) return;
+    await uploadAndEmbed(file);
+  }
+
+  // Clipboard paste: images are uploaded directly instead of being ignored.
   function onPaste(event: ClipboardEvent<HTMLTextAreaElement>): void {
     const items = event.clipboardData?.items;
     if (!items) return;
@@ -137,17 +152,32 @@ export default function Composer({
         const file = item.getAsFile();
         if (file) {
           event.preventDefault();
-          const ext = file.type.split('/')[1]?.replace('jpeg', 'jpg') ?? 'png';
-          // Screenshots usually arrive as nameless blobs; give them one.
-          const named = new File([file], file.name || `pasted-${Date.now()}.${ext}`, {
-            type: file.type,
-          });
-          void handleFile(named);
+          void uploadAndEmbed(file);
           return;
         }
       }
     }
   }
+
+  function onDragOver(event: React.DragEvent<HTMLTextAreaElement>): void {
+    event.preventDefault();
+    setPasteActive(true);
+  }
+
+  function onDragLeave(): void {
+    setPasteActive(false);
+  }
+
+  function onDrop(event: React.DragEvent<HTMLTextAreaElement>): void {
+    event.preventDefault();
+    setPasteActive(false);
+    const file = event.dataTransfer.files?.[0];
+    if (file) void uploadAndEmbed(file);
+  }
+
+  const previewHtml = value.trim()
+    ? renderMarkdown(value)
+    : '';
 
   return (
     <div className="composer">
@@ -168,7 +198,7 @@ export default function Composer({
         <button
           type="button"
           className="tool-button"
-          title="上传图片（PNG / JPEG / GIF / WebP，≤5MB），也可直接粘贴截图"
+          title="上传图片（PNG / JPEG / GIF / WebP，≤5MB），也可直接粘贴或拖拽"
           disabled={disabled || uploading}
           onClick={() => fileRef.current?.click()}
         >
@@ -181,44 +211,60 @@ export default function Composer({
           hidden
           onChange={(e) => void handleFile(e.target.files?.[0])}
         />
-        <button
-          type="button"
-          className={`tool-button preview-toggle ${preview ? 'active' : ''}`}
-          title={preview ? '切换回 Markdown 编辑' : '实时预览富文本效果'}
-          disabled={disabled || uploading}
-          onClick={() => setPreview((v) => !v)}
-        >
-          {preview ? '✏️ 编辑' : '👁 预览'}
-        </button>
-        <span className="composer-hint">支持 Markdown · 可直接粘贴图片</span>
+        <span className="composer-mode-switch">
+          <button
+            type="button"
+            className={effectiveView === 'edit' ? 'active' : ''}
+            onClick={() => setView('edit')}
+            title="仅编辑"
+          >
+            编辑
+          </button>
+          <button
+            type="button"
+            className={effectiveView === 'split' ? 'active' : ''}
+            onClick={() => setView('split')}
+            title="编辑与预览并排"
+          >
+            分屏
+          </button>
+          <button
+            type="button"
+            className={effectiveView === 'preview' ? 'active' : ''}
+            onClick={() => setView('preview')}
+            title="实时预览渲染效果"
+          >
+            预览
+          </button>
+        </span>
       </div>
 
       <div className="composer-row">
-        <div className="composer-editor">
+        {effectiveView !== 'preview' && (
           <textarea
             ref={textareaRef}
-            className="composer-input"
+            className={`composer-input ${pasteActive ? 'paste-active' : ''}`}
             value={value}
             placeholder={disabled ? disabledHint ?? placeholder : placeholder}
             disabled={disabled}
-            rows={3}
+            rows={effectiveView === 'split' ? 9 : 3}
             onChange={(e) => setValue(e.target.value)}
             onKeyDown={onKeyDown}
             onPaste={onPaste}
-            hidden={preview}
+            onDragOver={onDragOver}
+            onDragLeave={onDragLeave}
+            onDrop={onDrop}
           />
-          {preview && (
-            <div
-              className="composer-preview markdown-body"
-              title="点击返回编辑"
-              onClick={() => {
-                setPreview(false);
-                requestAnimationFrame(() => textareaRef.current?.focus());
-              }}
-              dangerouslySetInnerHTML={{ __html: previewHtml }}
-            />
-          )}
-        </div>
+        )}
+        {effectiveView !== 'edit' && (
+          <div className={`composer-preview markdown-body ${value.trim() ? '' : 'preview-empty'}`}>
+            {value.trim() ? (
+              <div dangerouslySetInnerHTML={{ __html: previewHtml }} />
+            ) : (
+              '输入内容后此处实时预览，代码块会按语法高亮渲染'
+            )}
+          </div>
+        )}
         <button
           type="button"
           className="send-button"
@@ -227,6 +273,9 @@ export default function Composer({
         >
           {uploading ? '上传中…' : '发送'}
         </button>
+      </div>
+      <div className="composer-paste-hint">
+        支持 Markdown，可直接 Ctrl/⌘+V 粘贴截图，或拖拽图片到输入框
       </div>
     </div>
   );

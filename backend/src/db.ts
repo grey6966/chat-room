@@ -35,14 +35,17 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_messages_direct_pair
     ON messages (sender, recipient, id) WHERE type = 'direct';
 
-  -- Channel read receipts: one row per (message, reader). WITHOUT ROWID keeps
-  -- the composite primary key clustered by message_id for cheap count queries.
-  CREATE TABLE IF NOT EXISTS message_receipts (
+  -- Read receipts (channel messages). The sender is never counted as a reader.
+  CREATE TABLE IF NOT EXISTS message_reads (
     message_id  INTEGER NOT NULL,
     reader      TEXT NOT NULL,
     read_at     INTEGER NOT NULL,
-    PRIMARY KEY (message_id, reader)
-  ) WITHOUT ROWID;
+    PRIMARY KEY (message_id, reader),
+    FOREIGN KEY (message_id) REFERENCES messages (id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_message_reads_message
+    ON message_reads (message_id);
 `);
 
 // One-time migration for databases created before receipts existed: treat the
@@ -120,65 +123,57 @@ export function getDirectHistory(user: string, peer: string, limit: number, befo
 
 // --- Read receipts -----------------------------------------------------------
 
-const markChannelReadStmt = db.prepare(
-  `INSERT OR IGNORE INTO message_receipts (message_id, reader, read_at)
-   SELECT id, @reader, @read_at FROM messages
-    WHERE type = 'channel' AND id <= @lastId`
+const markChannelRangeReadStmt = db.prepare(
+  `INSERT OR IGNORE INTO message_reads (message_id, reader, read_at)
+   SELECT id, @reader, @read_at
+     FROM messages
+    WHERE type = 'channel' AND id <= @max_id AND sender != @reader`
 );
 
-/**
- * Record that `reader` has read channel messages up to and including
- * `lastId`. Idempotent thanks to the primary key.
- */
-export function markChannelRead(reader: string, lastId: number): void {
-  markChannelReadStmt.run({ reader, lastId, read_at: Date.now() });
+const newlyReadStmt = db.prepare(
+  `SELECT message_id AS id FROM message_reads WHERE reader = ? AND read_at = ?`
+);
+
+/** Mark the reader's channel view as caught up. Returns newly-read message ids. */
+export function markChannelReadThrough(reader: string, maxId: number): number[] {
+  const readAt = Date.now();
+  const info = markChannelRangeReadStmt.run({ reader, max_id: maxId, read_at: readAt });
+  if (info.changes === 0) return [];
+  return (newlyReadStmt.all(reader, readAt) as Array<{ id: number }>).map((r) => r.id);
 }
 
-/** Read counts keyed by message id for a batch of messages. */
-export function getChannelReadCounts(messageIds: number[]): Map<number, number> {
-  const result = new Map<number, number>();
-  if (messageIds.length === 0) return result;
-  const placeholders = messageIds.map(() => '?').join(',');
-  const rows = db
-    .prepare(
-      `SELECT message_id AS id, COUNT(*) AS n
-         FROM message_receipts
-        WHERE message_id IN (${placeholders})
-        GROUP BY message_id`
-    )
-    .all(...messageIds) as Array<{ id: number; n: number }>;
-  for (const row of rows) result.set(row.id, row.n);
-  return result;
+const latestChannelIdStmt = db.prepare(
+  `SELECT MAX(id) AS id FROM messages WHERE type = 'channel'`
+);
+
+export function getLatestChannelId(): number {
+  return (latestChannelIdStmt.get() as { id: number | null }).id ?? 0;
 }
 
-/** Readers of a single channel message, sorted by username. */
-export function getChannelReaders(messageId: number): string[] {
-  const rows = db
-    .prepare(`SELECT reader FROM message_receipts WHERE message_id = ? ORDER BY reader`)
-    .all(messageId) as Array<{ reader: string }>;
-  return rows.map((r) => r.reader);
+const readCountsStmt = db.prepare(
+  `SELECT message_id AS messageId, COUNT(*) AS count
+     FROM message_reads
+    WHERE message_id IN (SELECT value FROM json_each(@ids))
+    GROUP BY message_id`
+);
+
+/** Reader counts for a batch of message ids (skips ids with no receipts). */
+export function getReadCounts(messageIds: number[]): Map<number, number> {
+  if (messageIds.length === 0) return new Map();
+  const rows = readCountsStmt.all({ ids: JSON.stringify(messageIds) }) as Array<{
+    messageId: number;
+    count: number;
+  }>;
+  return new Map(rows.map((r) => [r.messageId, r.count]));
 }
 
-/** Newest channel message ids, ascending (for receipt fan-out after a mark). */
-export function getRecentChannelMessageIds(limit: number): number[] {
-  const rows = db
-    .prepare(
-      `SELECT id FROM messages WHERE type = 'channel' ORDER BY id DESC LIMIT ?`
-    )
-    .all(limit) as Array<{ id: number }>;
-  return rows.map((r) => r.id).reverse();
-}
+/** Usernames that have read a given channel message. */
+const readersStmt = db.prepare(
+  `SELECT reader FROM message_reads WHERE message_id = ? ORDER BY reader`
+);
 
-/** Drop receipts belonging to messages older than the newest 1000 channel msgs. */
-export function pruneOldReceipts(keep = 1000): void {
-  db.prepare(
-    `DELETE FROM message_receipts
-      WHERE message_id < (
-        SELECT MIN(id) FROM (
-          SELECT id FROM messages WHERE type = 'channel' ORDER BY id DESC LIMIT ?
-        )
-      )`
-  ).run(keep);
+export function getReaders(messageId: number): string[] {
+  return (readersStmt.all(messageId) as Array<{ reader: string }>).map((r) => r.reader);
 }
 
 if (isFresh) {

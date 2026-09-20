@@ -19,6 +19,10 @@ function backendTarget(): string {
   return `http://127.0.0.1:${port}`;
 }
 
+// If the backend's preferred port is busy it starts on the next free one;
+// point the dev proxy at it with VITE_BACKEND_URL=http://localhost:3002
+const backendUrl = process.env.VITE_BACKEND_URL ?? 'http://localhost:3001';
+
 export default defineConfig({
   plugins: [react()],
   build: {
@@ -33,24 +37,16 @@ export default defineConfig({
     },
   },
   server: {
-    // strictPort:false (default) — if 5173 is busy Vite picks the next free
-    // port automatically instead of failing.
-    strictPort: false,
+    // strictPort: false (default) — if 5173 is taken Vite picks the next
+    // free port automatically and prints the actual URL.
     port: 5173,
     // Re-evaluated per request, so a backend port change needs no frontend
     // restart and no static string target.
     proxy: {
-      '/api': {
-        target: backendTarget(),
-        router: () => backendTarget(),
-      },
-      '/uploads': {
-        target: backendTarget(),
-        router: () => backendTarget(),
-      },
+      '/api': backendUrl,
+      '/uploads': backendUrl,
       '/socket.io': {
-        target: backendTarget(),
-        router: () => backendTarget(),
+        target: backendUrl,
         ws: true,
       },
     },

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { themeLabel, useTheme } from '../lib/theme.js';
 
 interface LoginProps {
   joining: boolean;
@@ -10,6 +11,8 @@ export default function Login({ joining, error, onJoin }: LoginProps) {
   const [name, setName] = useState(() => localStorage.getItem('chat:username') ?? '');
   const [localError, setLocalError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const { mode, resolved, cycleTheme } = useTheme();
+  const themeInfo = themeLabel(mode, resolved);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -28,6 +31,14 @@ export default function Login({ joining, error, onJoin }: LoginProps) {
 
   return (
     <div className="login-screen">
+      <button
+        type="button"
+        className="theme-toggle login-theme-toggle"
+        title={themeInfo.title}
+        onClick={cycleTheme}
+      >
+        {themeInfo.icon}
+      </button>
       <form className="login-card" onSubmit={submit}>
         <div className="login-logo">💬</div>
         <h1>实时聊天室</h1>

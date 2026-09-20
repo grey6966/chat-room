@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Socket } from 'socket.io-client';
 import { fetchDirectHistory } from '../api.js';
-import type { ChatMessage, ChatNotice, Presence, ReadReceiptsUpdate, Session } from '../types.js';
+import type { ChatMessage, ChatNotice, Presence, Session } from '../types.js';
+import { themeLabel, useTheme } from '../lib/theme.js';
 import Sidebar from './Sidebar.js';
 import MessageList from './MessageList.js';
 import Composer from './Composer.js';
@@ -54,6 +55,16 @@ export default function ChatApp({
   const [openPeer, setOpenPeer] = useState<string | null>(null);
   const [unread, setUnread] = useState<Record<string, number>>({});
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { mode, resolved, cycleTheme } = useTheme();
+
+  // message id -> reader count (channel only)
+  const [readCounts, setReadCounts] = useState<Record<number, number>>(() => {
+    const initial: Record<number, number> = {};
+    for (const m of initialHistory) {
+      if (m.readByCount) initial[m.id] = m.readByCount;
+    }
+    return initial;
+  });
 
   const openPeerRef = useRef<string | null>(null);
   openPeerRef.current = openPeer;
@@ -68,8 +79,20 @@ export default function ChatApp({
     const onChannelMessage = (message: ChatMessage) =>
       setChannelMessages((prev) => appendUnique(prev, message));
 
-    const onReceipts = (update: ReadReceiptsUpdate) =>
-      setChannelMessages((prev) => applyReceipts(prev, update.counts));
+    const onChannelReads = (counts: Record<string, number>) => {
+      setReadCounts((prev) => {
+        const next = { ...prev };
+        let changed = false;
+        for (const [id, count] of Object.entries(counts)) {
+          const key = Number(id);
+          if (Number.isFinite(key) && next[key] !== count) {
+            next[key] = count;
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+    };
 
     const onDirectMessage = (message: ChatMessage) => {
       const peer =
@@ -87,13 +110,13 @@ export default function ChatApp({
     socket.on('presence', onPresence);
     socket.on('notice', onNotice);
     socket.on('channel:message', onChannelMessage);
-    socket.on('channel:receipts', onReceipts);
+    socket.on('channel:reads', onChannelReads);
     socket.on('direct:message', onDirectMessage);
     return () => {
       socket.off('presence', onPresence);
       socket.off('notice', onNotice);
       socket.off('channel:message', onChannelMessage);
-      socket.off('channel:receipts', onReceipts);
+      socket.off('channel:reads', onChannelReads);
       socket.off('direct:message', onDirectMessage);
     };
   }, [socket, session.username]);
@@ -154,6 +177,17 @@ export default function ChatApp({
     [unread]
   );
 
+  // Apply the live reader-count map onto the channel messages.
+  const channelWithReads = useMemo(
+    () =>
+      channelMessages.map((m) =>
+        readCounts[m.id] !== undefined ? { ...m, readByCount: readCounts[m.id] } : m
+      ),
+    [channelMessages, readCounts]
+  );
+
+  const themeInfo = themeLabel(mode, resolved);
+
   return (
     <div className={`chat-shell ${sidebarOpen ? 'sidebar-open' : ''}`}>
       <Sidebar
@@ -212,6 +246,15 @@ export default function ChatApp({
             <span className="status-dot online" />
             {presence.length} 人在线
           </div>
+
+          <button
+            type="button"
+            className="theme-toggle"
+            title={themeInfo.title}
+            onClick={cycleTheme}
+          >
+            {themeInfo.icon}
+          </button>
         </header>
 
         {openPeer === null ? (
@@ -219,7 +262,7 @@ export default function ChatApp({
             <MessageList
               kind="channel"
               currentUser={session.username}
-              messages={channelMessages}
+              messages={channelWithReads}
               notices={notices}
               socket={socket}
               emptyText="还没有消息，来发出第一条消息吧！"

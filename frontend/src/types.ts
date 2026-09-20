@@ -5,8 +5,8 @@ export interface ChatMessage {
   recipient: string | null;
   content: string;
   createdAt: number;
-  /** Channel messages: number of users who have read the message. */
-  readBy?: number;
+  /** Channel messages only: number of other users who have read it. */
+  readByCount?: number;
 }
 
 export interface Session {
