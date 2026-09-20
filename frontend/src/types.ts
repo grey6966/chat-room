@@ -34,7 +34,3 @@ export interface JoinErr {
   ok: false;
   error: string;
 }
-
-export interface ReadReceiptsUpdate {
-  counts: Record<string, number>;
-}

@@ -35,25 +35,6 @@ export function fetchDirectHistory(
   >;
 }
 
-/** Tell the server the caller has read channel messages up to `lastId`. */
-export function markChannelRead(socket: Socket, lastId: number): void {
-  socket.emit('channel:read', { lastId });
-}
-
-/** Fetch the usernames who have read one channel message. */
-export function fetchChannelReaders(
-  socket: Socket,
-  messageId: number
-): Promise<string[]> {
-  return socket
-    .timeout(5000)
-    .emitWithAck('channel:readers', { messageId })
-    .then((res: { ok: true; readers: string[] } | { ok: false; error: string }) =>
-      res.ok ? res.readers : []
-    )
-    .catch(() => []);
-}
-
 /** Bearer-authenticated image upload; returns the URL to embed in Markdown. */
 export async function uploadImage(token: string, file: File): Promise<string> {
   const form = new FormData();

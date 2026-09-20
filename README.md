@@ -28,12 +28,12 @@ docker compose up -d --build
 需要 Node.js 22+。
 
 ```bash
-# 终端 1：后端（默认 http://localhost:3001）
+# 终端 1：后端（http://localhost:3001）
 cd backend
 npm install
 npm run dev
 
-# 终端 2：前端（默认 http://localhost:5173，自动代理到后端）
+# 终端 2：前端（http://localhost:5173，自动代理到后端）
 cd frontend
 npm install
 npm run dev
@@ -66,10 +66,6 @@ npm run dev
 - **SQLite WAL**：`journal_mode=WAL` + `synchronous=NORMAL` + 64MB 内存缓存 + 5s busy timeout，读不阻塞写、写不阻塞读；消息写入为预处理语句（prepared statement）
 - **事件循环友好**：better-sqlite3 同步 API 配合极短写入事务，避免异步驱动的连接池开销；单条写入为微秒级
 - **背压保护**：Socket.IO 帧大小限制、每用户滑动窗口限流（5 秒 15 条）、上传大小与文件头校验
-- **已读回执**：`message_receipts` 表以 `(message_id, reader)` 复合主键幂等记录；
-  客户端上报「已读至某条」，服务端仅批量广播最近 50 条消息的计数（不是逐用户
-  名单），并做 500ms 防抖合并；客户端侧 600ms 节流，N 人同时已读只产生一次
-  扇出风暴的一小部分；点击「N 人已读」才按需查询完整名单
 - **HTTP 层**：Fastify（高吞吐）、响应压缩、静态资源与 API 同源部署，无需额外网关
 - **横向扩展预留**：会话与在线状态集中在 `realtime.ts`，多实例时只需接入 Socket.IO Redis adapter（受“不依赖外部服务”约束，本项目默认单实例）
 
@@ -106,9 +102,6 @@ docker-compose.yml 单服务 + 数据卷 + 健康检查
 ```bash
 # 功能：登录/重名/群聊/私聊/在线列表/上下线/历史/上传鉴权/伪装图片
 SMOKE_URL=http://localhost:3000 node --import tsx scripts/smoke.ts
-
-# 已读回执：消息计数、已读用户列表、批量广播、非法参数
-SMOKE_URL=http://localhost:3000 node --import tsx scripts/receipts.ts
 
 # 重连：活跃连接不可冒名、断线宽限期内同名可接管
 SMOKE_URL=http://localhost:3000 node --import tsx scripts/reconnect.ts

@@ -2,8 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createSocket, joinRoom } from './api.js';
 import Login from './components/Login.js';
 import ChatApp from './components/ChatApp.js';
-import ThemeToggle from './components/ThemeToggle.js';
-import { useTheme } from './lib/useTheme.js';
 import type { ChatMessage, Presence, Session } from './types.js';
 
 type Socket = ReturnType<typeof createSocket>;
@@ -12,8 +10,6 @@ export default function App() {
   const socketRef = useRef<Socket | null>(null);
   if (socketRef.current === null) socketRef.current = createSocket();
   const socket = socketRef.current;
-
-  const { mode, cycleMode } = useTheme();
 
   const [session, setSession] = useState<Session | null>(null);
   const [joining, setJoining] = useState(false);
@@ -105,30 +101,29 @@ export default function App() {
     socket.connect();
   }, [socket]);
 
+  if (!session) {
+    return (
+      <>
+        {!connected && <div className="global-banner">正在连接服务器…</div>}
+        <Login joining={joining} error={joinError} onJoin={performJoin} />
+      </>
+    );
+  }
+
   return (
     <>
-      <div className="theme-toggle-host">
-        <ThemeToggle mode={mode} onToggle={cycleMode} />
-      </div>
-      {!connected && <div className="global-banner">正在连接服务器…</div>}
-      {!session ? (
-        <Login joining={joining} error={joinError} onJoin={performJoin} />
-      ) : (
-        <>
-          {!connected && <div className="global-banner">连接已断开，正在自动重连…</div>}
-          {/* Keyed by token: a server-restart rejoin issues a fresh token and
-              remounts ChatApp with the latest history; a CSR-recovered blip keeps
-              the same token and therefore the in-memory view. */}
-          <ChatApp
-            key={session.token}
-            socket={socket}
-            session={session}
-            initialPresence={bootstrap.presence}
-            initialHistory={bootstrap.history}
-            onLogout={handleLogout}
-          />
-        </>
-      )}
+      {!connected && <div className="global-banner">连接已断开，正在自动重连…</div>}
+      {/* Keyed by token: a server-restart rejoin issues a fresh token and
+          remounts ChatApp with the latest history; a CSR-recovered blip keeps
+          the same token and therefore the in-memory view. */}
+      <ChatApp
+        key={session.token}
+        socket={socket}
+        session={session}
+        initialPresence={bootstrap.presence}
+        initialHistory={bootstrap.history}
+        onLogout={handleLogout}
+      />
     </>
   );
 }

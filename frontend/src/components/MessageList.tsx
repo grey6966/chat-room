@@ -104,53 +104,6 @@ export default function MessageList({
     socket.emit('channel:read', { upTo: maxId });
   };
 
-  const lastMessage = messages[messages.length - 1];
-
-  // Throttled read reporting: in a busy room many messages may arrive per
-  // second; coalesce them into at most one mark every 600ms.
-  function scheduleMark(id: number): void {
-    if (!socket) return;
-    pendingMarkRef.current = id;
-    if (markTimerRef.current !== null) return;
-    markTimerRef.current = setTimeout(() => {
-      markTimerRef.current = null;
-      const pending = pendingMarkRef.current;
-      // Don't mark if the user scrolled up while the timer was pending.
-      if (!stickToBottomRef.current) return;
-      if (pending > lastMarkedIdRef.current) {
-        lastMarkedIdRef.current = pending;
-        markChannelRead(socket!, pending);
-      }
-    }, 600);
-  }
-
-  function flushMark(): void {
-    if (markTimerRef.current !== null) {
-      clearTimeout(markTimerRef.current);
-      markTimerRef.current = null;
-    }
-    const pending = pendingMarkRef.current;
-    if (socket && pending > lastMarkedIdRef.current) {
-      lastMarkedIdRef.current = pending;
-      markChannelRead(socket, pending);
-    }
-  }
-
-  // Report the newest visible channel message as read while pinned to the
-  // bottom. Throttled; skips ids already reported.
-  useEffect(() => {
-    if (kind !== 'channel' || !socket || !stickToBottomRef.current || !lastMessage) return;
-    if (lastMessage.id <= lastMarkedIdRef.current) return;
-    scheduleMark(lastMessage.id);
-  }, [kind, socket, lastMessage]);
-
-  useEffect(
-    () => () => {
-      if (markTimerRef.current) clearTimeout(markTimerRef.current);
-    },
-    []
-  );
-
   // Keep pinned to the newest message unless the user scrolled up to read.
   useEffect(() => {
     const el = scrollRef.current;

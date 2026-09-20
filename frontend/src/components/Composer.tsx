@@ -92,9 +92,6 @@ export default function Composer({
     const selected = el ? value.slice(el.selectionStart, el.selectionEnd) : '';
     const { text } = tool.apply(selected);
     insertText(text);
-    // The code-block tool inserts a fence; reveal the rendered result
-    // immediately instead of leaving the user staring at ``` markers.
-    if (tool.title === '代码块') setPreview(true);
   }
 
   function send(): void {
@@ -103,7 +100,6 @@ export default function Composer({
     onSend(content);
     setValue('');
     setError(null);
-    setPreview(false);
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>): void {
@@ -116,22 +112,19 @@ export default function Composer({
   async function uploadAndEmbed(file: File): Promise<void> {
     if (!file.type.startsWith('image/')) {
       setError('只能上传图片文件');
-      return false;
+      return;
     }
     if (file.size > 5 * 1024 * 1024) {
       setError('图片不能超过 5 MB');
-      return false;
+      return;
     }
     setUploading(true);
     setError(null);
     try {
       const url = await uploadImage(token, file);
-      const safeName = (file.name || 'pasted-image').replace(/[\[\]]/g, '');
-      insertText(`\n![${safeName}](${url})\n`);
-      return true;
+      insertText(`\n![${file.name.replace(/[\[\]]/g, '')}](${url})\n`);
     } catch (e) {
       setError(e instanceof Error ? e.message : '图片上传失败');
-      return false;
     } finally {
       setUploading(false);
       if (fileRef.current) fileRef.current.value = '';

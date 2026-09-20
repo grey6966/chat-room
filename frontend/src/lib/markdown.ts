@@ -69,27 +69,16 @@ md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
   return defaultLinkOpen(tokens, idx, options, env, self);
 };
 
-const SANITIZE_TAGS = [
-  'a', 'b', 'blockquote', 'br', 'button', 'code', 'del', 'div', 'em',
-  'h1', 'h2', 'h3', 'h4', 'hr', 'i', 'img', 'li', 'ol', 'p', 'pre',
-  'span', 'strong', 'table', 'tbody', 'td', 'th', 'thead', 'tr', 'ul',
-];
-
-/**
- * Render untrusted Markdown to sanitized HTML.
- *
- * @param source Markdown text
- * @param forPreview relaxes the URI allowlist so a half-typed image/link URL
- *                   (e.g. `![](|)` while the user is still typing) doesn't
- *                   blank the whole composer preview.
- */
-export function renderMarkdown(source: string, forPreview = false): string {
+/** Render untrusted Markdown to sanitized HTML. */
+export function renderMarkdown(source: string): string {
   const rawHtml = md.render(source);
   return DOMPurify.sanitize(rawHtml, {
-    ALLOWED_TAGS: SANITIZE_TAGS,
-    ALLOWED_ATTR: ['href', 'src', 'alt', 'title', 'class', 'type'],
-    ...(forPreview
-      ? { ALLOWED_URI_REGEXP: /^(?:(?:https?|ftp|data|blob):|\/|#)/i }
-      : { ALLOWED_URI_REGEXP: /^(?:(?:https?|ftp):|\/|#)/i }),
+    ALLOWED_TAGS: [
+      'a', 'b', 'blockquote', 'br', 'button', 'code', 'del', 'div', 'em',
+      'h1', 'h2', 'h3', 'h4', 'hr', 'i', 'img', 'li', 'ol', 'p', 'pre',
+      'span', 'strong', 'table', 'tbody', 'td', 'th', 'thead', 'tr', 'ul',
+    ],
+    ALLOWED_ATTR: ['href', 'src', 'alt', 'title', 'class'],
+    ALLOWED_URI_REGEXP: /^(?:(?:https?|ftp):|\/|#)/i,
   });
 }

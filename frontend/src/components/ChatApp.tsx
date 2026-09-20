@@ -27,18 +27,6 @@ function appendUnique(list: ChatMessage[], message: ChatMessage): ChatMessage[] 
   return next.length > MAX_BUFFERED ? next.slice(next.length - MAX_BUFFERED) : next;
 }
 
-/** Merge a batch of read counts into a channel message list. */
-function applyReceipts(list: ChatMessage[], counts: Record<string, number>): ChatMessage[] {
-  let changed = false;
-  const next = list.map((m) => {
-    const n = counts[String(m.id)];
-    if (n === undefined || m.readBy === n) return m;
-    changed = true;
-    return { ...m, readBy: n };
-  });
-  return changed ? next : list;
-}
-
 export default function ChatApp({
   socket,
   session,

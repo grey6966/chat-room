@@ -14,14 +14,6 @@
 .hljs-addition{color:#aff5b4;background:#033a16;}
 .hljs-deletion{color:#ffdcd7;background:#67060c;}
 
-/* Code blocks always render on the dark GitHub surface, in both themes. */
-:root {
-  --code-bg: #0d1117;
-  --code-head-bg: rgba(255, 255, 255, 0.04);
-  --code-inline-bg: rgba(0, 0, 0, 0.35);
-  --code-inline-text: #e6e9f0;
-}
-
 * { box-sizing: border-box; }
 
 :root {
@@ -36,10 +28,8 @@
   --accent: #5b8cff;
   --accent-hover: #74a0ff;
   --accent-soft: rgba(91, 140, 255, 0.14);
-  --link: #93b4ff;
   --bubble-mine: #2f56c8;
   --bubble-other: #232a3a;
-  --bubble-border: rgba(255, 255, 255, 0.04);
   --danger: #ff6b6b;
   --ok: #3ecf8e;
   --shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
@@ -83,34 +73,6 @@
   color-scheme: light;
 }
 
-:root[data-theme='light'] {
-  --bg: #f4f6fa;
-  --bg-raised: #ffffff;
-  --bg-overlay: #eceff5;
-  --border: #dde2ec;
-  --text: #1c2433;
-  --text-dim: #57607a;
-  --text-faint: #97a0b3;
-  --accent: #3563e9;
-  --accent-hover: #244fc7;
-  --accent-soft: rgba(53, 99, 233, 0.12);
-  --link: #2450d8;
-  --bubble-mine: #3563e9;
-  --bubble-other: #ffffff;
-  --bubble-border: #e2e7f0;
-  --danger: #e23d3d;
-  --ok: #1fa463;
-  --shadow: 0 10px 34px rgba(31, 45, 80, 0.12);
-  --header-bg: rgba(255, 255, 255, 0.88);
-  --blockquote-bg: rgba(53, 99, 233, 0.07);
-  --table-head-bg: rgba(28, 36, 51, 0.04);
-  --scrollbar: #c9d0de;
-  --scrollbar-hover: #aab4c8;
-  /* Fenced code blocks stay dark; inline code gets a soft light surface. */
-  --code-inline-bg: rgba(28, 36, 51, 0.07);
-  --code-inline-text: #b3294e;
-}
-
 html, body, #root {
   height: 100%;
   margin: 0;
@@ -124,7 +86,6 @@ body {
   font-size: 15px;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
-  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 button {
@@ -146,39 +107,6 @@ button {
   color: #fff;
   font-size: 13px;
   padding: 6px 12px;
-}
-
-/* ---------------- Theme toggle ---------------- */
-
-.theme-toggle-host {
-  position: fixed;
-  top: 10px;
-  right: 14px;
-  z-index: 120;
-}
-
-.theme-toggle {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  font-size: 17px;
-  line-height: 1;
-  display: grid;
-  place-items: center;
-  background: var(--bg-raised);
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow);
-  transition: background 0.15s, transform 0.12s, border-color 0.15s;
-}
-
-.theme-toggle:hover { background: var(--bg-overlay); transform: scale(1.06); }
-
-/* Keep it clear of the chat header content on narrow screens */
-@media (max-width: 760px) {
-  .chat-header { padding-right: 56px; }
-  .theme-toggle-host { top: 10px; right: 10px; bottom: auto; }
-  .theme-toggle { width: 34px; height: 34px; font-size: 15px; }
-  .readers-popover { width: min(220px, 70vw); }
 }
 
 /* ---------------- Login ---------------- */
@@ -509,14 +437,6 @@ button.nav-item:hover { background: var(--bg-overlay); }
 
 /* ---------------- Message list ---------------- */
 
-.message-list-wrap {
-  position: relative;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
 .message-list {
   flex: 1;
   overflow-y: auto;
@@ -594,13 +514,12 @@ button.nav-item:hover { background: var(--bg-overlay); }
 
 .message-meta {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: 10px;
-  height: 21px;
   margin-bottom: 3px;
 }
 
-.message-sender { font-weight: 600; font-size: 13.5px; line-height: 21px; }
+.message-sender { font-weight: 600; font-size: 13.5px; }
 .message-time { font-size: 11.5px; color: var(--text-faint); }
 
 .message-content {
@@ -653,7 +572,7 @@ button.nav-item:hover { background: var(--bg-overlay); }
   margin: 8px 0;
   padding: 4px 12px;
   border-left: 3px solid var(--accent);
-  background: var(--blockquote-bg);
+  background: rgba(91, 140, 255, 0.08);
   border-radius: 0 8px 8px 0;
   color: var(--text-dim);
 }
@@ -694,7 +613,7 @@ button.nav-item:hover { background: var(--bg-overlay); }
   margin: 8px 0;
   border-radius: 10px;
   overflow: hidden;
-  background: var(--code-bg);
+  background: #0d1117;
   border: 1px solid var(--border);
   max-width: 680px;
 }
@@ -704,7 +623,7 @@ button.nav-item:hover { background: var(--bg-overlay); }
   justify-content: space-between;
   align-items: center;
   padding: 5px 12px;
-  background: var(--code-head-bg);
+  background: rgba(255, 255, 255, 0.04);
   font-size: 11.5px;
   color: var(--text-faint);
 }
@@ -809,15 +728,8 @@ button.nav-item:hover { background: var(--bg-overlay); }
   align-items: flex-end;
 }
 
-.composer-editor {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
-
 .composer-input {
-  width: 100%;
+  flex: 1;
   resize: none;
   background: var(--bg);
   border: 1px solid var(--border);
@@ -828,8 +740,7 @@ button.nav-item:hover { background: var(--bg-overlay); }
   font-size: 14.5px;
   line-height: 1.5;
   outline: none;
-  min-height: 68px;
-  max-height: 220px;
+  max-height: 180px;
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 
@@ -839,29 +750,6 @@ button.nav-item:hover { background: var(--bg-overlay); }
 }
 
 .composer-input:disabled { opacity: 0.55; }
-
-/* Live Markdown preview inside the composer: the code block renders with
-   real highlighting instead of showing the ``` fence source. */
-.composer-preview {
-  width: 100%;
-  min-height: 68px;
-  max-height: 260px;
-  overflow-y: auto;
-  background: var(--bg);
-  border: 1px solid var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
-  border-radius: 12px;
-  padding: 11px 14px;
-  font-size: 14.5px;
-  cursor: text;
-}
-
-.composer-preview .code-block-wrap { max-width: 100%; }
-
-.preview-toggle.active {
-  background: var(--accent-soft);
-  color: var(--accent-hover);
-}
 
 .send-button {
   height: 42px;

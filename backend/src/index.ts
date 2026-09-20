@@ -1,5 +1,3 @@
-import { writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
 import { config } from './config.js';
 import './db.js';
 import { createApp } from './app.js';

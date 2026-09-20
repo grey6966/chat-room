@@ -18,14 +18,3 @@ export interface ChatNotice {
   username: string;
   createdAt: number;
 }
-
-/** Batch read-count refresh for visible channel messages. */
-export interface ReadReceiptsUpdate {
-  counts: Record<string, number>;
-}
-
-/** Detailed reader list for one channel message. */
-export interface ReadReceiptDetail {
-  messageId: number;
-  readers: string[];
-}

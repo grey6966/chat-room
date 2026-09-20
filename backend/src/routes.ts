@@ -27,12 +27,6 @@ function serialize(row: MessageRow): ChatMessage {
   };
 }
 
-/** Channel rows with read counts attached in a single query. */
-function serializeChannel(rows: MessageRow[]): ChatMessage[] {
-  const counts = getChannelReadCounts(rows.map((r) => r.id));
-  return rows.map((row) => ({ ...serialize(row), readBy: counts.get(row.id) ?? 0 }));
-}
-
 function authenticate(request: FastifyRequest, reply: FastifyReply): void {
   const session = getSession(parseBearer(request.headers.authorization));
   if (!session) {

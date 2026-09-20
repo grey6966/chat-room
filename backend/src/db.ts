@@ -48,18 +48,6 @@ db.exec(`
     ON message_reads (message_id);
 `);
 
-// One-time migration for databases created before receipts existed: treat the
-// sender of every historical channel message as having read their own message,
-// so read counts are not inflated by traffic from earlier versions.
-const userVersion = Number(db.pragma('user_version', { simple: true }));
-if (userVersion < 1) {
-  db.exec(
-    `INSERT OR IGNORE INTO message_receipts (message_id, reader, read_at)
-     SELECT id, sender, created_at FROM messages WHERE type = 'channel'`
-  );
-  db.pragma('user_version = 1');
-}
-
 export interface MessageRow {
   id: number;
   type: 'channel' | 'direct';
