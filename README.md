@@ -40,7 +40,7 @@ npm run dev
 ```
 
 - 端口被占用时会自动顺延：后端在 3001 被占用时自动尝试 3002、3003…（最多 10 个），前端 Vite 同理顺延 5174…
-- 若后端改用其他端口，前端通过环境变量指定代理目标：`VITE_BACKEND_URL=http://localhost:3002 npm run dev`
+- **前后端免配置联动**：后端启动后把实际监听端口写入 `backend/.dev-port`，前端开发代理自动读取该文件；运行中后端若漂移到其他端口，Vite 监测到文件变化会自动重启代理（浏览器里的 Socket.IO 会自动重连），无需手动改地址或重启前端。如需手动指定，仍可用 `VITE_BACKEND_URL=http://localhost:3002 npm run dev`（环境变量优先）
 
 ## 功能清单
 

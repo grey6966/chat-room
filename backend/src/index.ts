@@ -1,3 +1,5 @@
+import { writeFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
 import { config } from './config.js';
 import './db.js';
 import { createApp } from './app.js';
@@ -36,12 +38,26 @@ async function listenWithFallback(
   throw new Error('no free port found');
 }
 
+/**
+ * Publish the actual listening port for the Vite dev proxy, which reads
+ * backend/.dev-port at startup and auto-restarts when it changes. Only
+ * meaningful in local development; a failure (read-only FS) is harmless.
+ */
+async function publishDevPort(port: number): Promise<void> {
+  try {
+    await writeFile(resolve(process.cwd(), '.dev-port'), String(port), 'utf8');
+  } catch {
+    // ignore
+  }
+}
+
 async function main(): Promise<void> {
   const app = createApp();
   attachRealtime(app.server);
 
   const actualPort = await listenWithFallback(app, config.port, config.host);
   app.log.info(`chat server listening on http://${config.host}:${actualPort}`);
+  await publishDevPort(actualPort);
 }
 
 main().catch((error) => {
