@@ -5,8 +5,7 @@ import Underline from '@tiptap/extension-underline';
 import Link from '@tiptap/extension-link';
 import Image from '@tiptap/extension-image';
 import Placeholder from '@tiptap/extension-placeholder';
-import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
-import { lowlight } from '../highlight';
+import { CodeBlock, CODE_LANGUAGES } from './CodeBlock';
 import type { SendAck } from '../types';
 
 interface EditorToolbarProps {
@@ -80,6 +79,27 @@ function Toolbar({ editor, onPickImage, uploading }: EditorToolbarProps) {
       >
         {'{ }'}
       </button>
+      {editor.isActive('codeBlock') && (
+        <select
+          className="code-lang-select"
+          title="代码语言"
+          value={(editor.getAttributes('codeBlock').language as string | null) ?? 'plaintext'}
+          onChange={(e) => {
+            const lang = e.target.value;
+            editor
+              .chain()
+              .focus()
+              .updateAttributes('codeBlock', { language: lang === 'plaintext' ? null : lang })
+              .run();
+          }}
+        >
+          {CODE_LANGUAGES.map((l) => (
+            <option key={l.value} value={l.value}>
+              {l.label}
+            </option>
+          ))}
+        </select>
+      )}
       <span className="toolbar-sep" />
       <button
         type="button"
@@ -133,6 +153,17 @@ interface RichTextEditorProps {
   onUploadImage: (file: File) => Promise<string>;
 }
 
+/** 从粘贴/拖放事件中提取第一张图片（截图粘贴有时只出现在 items 里） */
+function pickImageFile(data: DataTransfer | null | undefined): File | null {
+  if (!data) return null;
+  const fromItems = Array.from(data.items ?? [])
+    .filter((it) => it.kind === 'file')
+    .map((it) => it.getAsFile())
+    .find((f): f is File => !!f && f.type.startsWith('image/'));
+  if (fromItems) return fromItems;
+  return Array.from(data.files ?? []).find((f) => f.type.startsWith('image/')) ?? null;
+}
+
 export default function RichTextEditor({ resetKey, onSend, onUploadImage }: RichTextEditorProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -169,24 +200,22 @@ export default function RichTextEditor({ resetKey, onSend, onUploadImage }: Rich
       }),
       Image.configure({ inline: false }),
       Placeholder.configure({ placeholder: '输入消息，Enter 发送，Shift+Enter 换行…' }),
-      CodeBlockLowlight.configure({ lowlight }),
+      CodeBlock,
     ],
     editorProps: {
       handlePaste: (_view, event) => {
-        const files = Array.from(event.clipboardData?.files ?? []);
-        const image = files.find((f) => f.type.startsWith('image/'));
-        if (image) {
-          void insertImageFile(editor!, image);
+        const image = pickImageFile(event.clipboardData);
+        if (image && editor) {
+          void insertImageFile(editor, image);
           return true;
         }
         return false; // 普通 HTML/文本走默认粘贴
       },
       handleDrop: (_view, event) => {
-        const files = Array.from(event.dataTransfer?.files ?? []);
-        const image = files.find((f) => f.type.startsWith('image/'));
-        if (image) {
+        const image = pickImageFile(event.dataTransfer);
+        if (image && editor) {
           event.preventDefault();
-          void insertImageFile(editor!, image);
+          void insertImageFile(editor, image);
           return true;
         }
         return false;
@@ -249,7 +278,7 @@ export default function RichTextEditor({ resetKey, onSend, onUploadImage }: Rich
             e.target.value = '';
           }}
         />
-        <span className="editor-hint">支持富文本 · 代码块 · 图片（粘贴/拖拽上传，≤5MB）</span>
+        <span className="editor-hint">支持富文本 · 代码块 · Ctrl/Cmd+V 直接粘贴截图（≤5MB）</span>
         <button type="button" className="btn-primary btn-send" onClick={doSend} disabled={uploading}>
           发送
         </button>

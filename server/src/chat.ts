@@ -46,7 +46,11 @@ function toMessageDTO(row: MessageRow): ChatMessageDTO {
   };
 }
 
-type JoinAck = Ack<{ user: OnlineUserDTO; recentMessages: ChatMessageDTO[] }>;
+type JoinAck = Ack<{
+  user: OnlineUserDTO;
+  recentMessages: ChatMessageDTO[];
+  lastReadMessageId: number | null;
+}>;
 type SendAck = Ack<{ message?: ChatMessageDTO }>;
 type DmOpenAck = Ack<{ peer: string; messages: ChatMessageDTO[] }>;
 type HistoryAck = Ack<{ messages: ChatMessageDTO[] }>;
@@ -82,11 +86,58 @@ export function registerChat(io: IOServer, db: Database): void {
           OR (m.receiverId = @me AND su.username = @peer))
       ORDER BY m.id DESC LIMIT @limit`
   );
+  const upsertReadCursor = db.prepare(
+    `INSERT INTO public_read_cursors (userId, lastReadId, updatedAt)
+     VALUES (@userId, @lastReadId, @ts)
+     ON CONFLICT(userId) DO UPDATE SET
+       lastReadId = MAX(public_read_cursors.lastReadId, excluded.lastReadId),
+       updatedAt = excluded.updatedAt`
+  );
+  const getReadCursorStmt = db.prepare(
+    `SELECT lastReadId FROM public_read_cursors WHERE userId = ?`
+  );
+  // 最近 READ_WINDOW 条群聊消息的已读数（已读游标 >= 消息 id，且不含发送者）
+  const READ_WINDOW = 100;
+  const readWindowCountsStmt = db.prepare(
+    `SELECT m.id AS messageId, COUNT(c.userId) AS cnt
+       FROM messages m
+       LEFT JOIN public_read_cursors c
+         ON c.lastReadId >= m.id AND c.userId <> m.senderId
+      WHERE m.kind = 'public'
+        AND m.id >= COALESCE((
+          SELECT id FROM messages WHERE kind = 'public'
+          ORDER BY id DESC LIMIT 1 OFFSET ${READ_WINDOW - 1}
+        ), 0)
+      GROUP BY m.id`
+  );
+  // 按给定消息 id 批量统计已读数（历史分页/最近消息初始值用）
+  const readCountsByIds = (ids: number[]) =>
+    db
+      .prepare(
+        `SELECT m.id AS messageId, COUNT(c.userId) AS cnt
+           FROM messages m
+           LEFT JOIN public_read_cursors c
+             ON c.lastReadId >= m.id AND c.userId <> m.senderId
+          WHERE m.id IN (${ids.map(() => '?').join(',')})
+          GROUP BY m.id`
+      )
+      .all(...ids) as { messageId: number; cnt: number }[];
 
   function onlineUsers(): OnlineUserDTO[] {
     return [...presence.entries()]
       .map(([username, entry]) => ({ id: entry.id, username }))
       .sort((a, b) => a.username.localeCompare(b.username, 'zh-Hans-CN'));
+  }
+
+  /** 给群聊消息批量附加 readByCount（私聊消息不附加） */
+  function withReadCounts(messages: ChatMessageDTO[]): ChatMessageDTO[] {
+    const publicIds = messages.filter((m) => m.kind === 'public').map((m) => m.id);
+    if (publicIds.length === 0) return messages;
+    const rows = readCountsByIds(publicIds);
+    const countMap = new Map(rows.map((r) => [r.messageId, Number(r.cnt)]));
+    return messages.map((m) =>
+      m.kind === 'public' ? { ...m, readByCount: countMap.get(m.id) ?? 0 } : m
+    );
   }
 
   function broadcastPresence(): void {
@@ -122,11 +173,18 @@ export function registerChat(io: IOServer, db: Database): void {
         presence.set(username, { id: row.id, sockets: new Set([socket.id]) });
       }
 
-      const recent = (publicHistoryStmt.all({ before: null, limit: HISTORY_LIMIT }) as MessageRow[])
-        .map(toMessageDTO)
-        .reverse();
+      const recentRows = publicHistoryStmt.all({ before: null, limit: HISTORY_LIMIT }) as MessageRow[];
+      const recent = withReadCounts(recentRows.map(toMessageDTO).reverse());
 
-      cb?.({ ok: true, user: { id: row.id, username }, recentMessages: recent });
+      // 该用户的已读游标（用于客户端避免把别人的旧游标当成新回执）
+      const cursorRow = getReadCursorStmt.get(row.id) as { lastReadId: number } | undefined;
+
+      cb?.({
+        ok: true,
+        user: { id: row.id, username },
+        recentMessages: recent,
+        lastReadMessageId: cursorRow?.lastReadId ?? null,
+      });
       broadcastPresence();
     });
 
@@ -147,13 +205,15 @@ export function registerChat(io: IOServer, db: Database): void {
 
       const now = Date.now();
       const info = insertMessage.run('public', socket.data.userId, null, content, now);
+      const messageId = Number(info.lastInsertRowid);
       const message: ChatMessageDTO = {
-        id: Number(info.lastInsertRowid),
+        id: messageId,
         kind: 'public',
         senderName: sender,
         receiverName: null,
         content,
         createdAt: now,
+        readByCount: 0,
       };
       io.to('public').emit('public:message', message);
       cb?.({ ok: true });
@@ -230,7 +290,23 @@ export function registerChat(io: IOServer, db: Database): void {
         before: typeof before === 'number' ? before : null,
         limit: HISTORY_LIMIT,
       }) as MessageRow[];
-      cb?.({ ok: true, messages: rows.map(toMessageDTO).reverse() });
+      cb?.({ ok: true, messages: withReadCounts(rows.map(toMessageDTO).reverse()) });
+    });
+
+    /* ---------- 群聊已读回执：上报自己读到的最新消息 ---------- */
+    socket.on('public:read', (rawId: unknown) => {
+      const userId = socket.data.userId as number | undefined;
+      const username = socket.data.username as string | undefined;
+      if (!userId || !username || typeof rawId !== 'number' || !Number.isFinite(rawId)) return;
+      const lastReadId = Math.floor(rawId);
+
+      upsertReadCursor.run({ userId, lastReadId, ts: Date.now() });
+
+      // 广播最近窗口内每条消息的最新已读数（服务端权威，客户端直接合并）
+      const rows = readWindowCountsStmt.all() as { messageId: number; cnt: number }[];
+      const counts: Record<number, number> = {};
+      for (const r of rows) counts[r.messageId] = Number(r.cnt);
+      io.to('public').emit('public:read', { upTo: lastReadId, counts });
     });
 
     /* ---------- 断线：该用户所有标签页都关闭后才判定下线 ---------- */

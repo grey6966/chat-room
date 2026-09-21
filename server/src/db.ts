@@ -30,6 +30,13 @@ export function openDb(): DB {
       createdAt    INTEGER NOT NULL
     );
 
+    -- 群聊已读游标：每个用户在公共频道读到的最新消息 id
+    CREATE TABLE IF NOT EXISTS public_read_cursors (
+      userId     INTEGER PRIMARY KEY REFERENCES users(id),
+      lastReadId INTEGER NOT NULL,
+      updatedAt  INTEGER NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_messages_public_time
       ON messages (kind, createdAt) WHERE kind = 'public';
     CREATE INDEX IF NOT EXISTS idx_messages_dm_pair

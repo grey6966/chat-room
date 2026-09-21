@@ -48,6 +48,11 @@ export function fetchPublicHistory(before?: number): Promise<HistoryAck> {
   return emitWithAck<HistoryAck>('public:history', before ?? null);
 }
 
+/** 上报公共频道已读游标 */
+export function markPublicRead(messageId: number): void {
+  socket.emit('public:read', messageId);
+}
+
 /** 上传图片，返回可直接放入 <img src> 的同源相对路径 */
 export async function uploadImage(file: File): Promise<string> {
   const form = new FormData();

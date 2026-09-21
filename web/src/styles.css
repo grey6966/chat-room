@@ -1,4 +1,6 @@
-:root {
+/* 默认（未挂载 JS 时）按系统偏好选择 */
+:root,
+html[data-theme='dark'] {
   --bg: #0f1117;
   --bg-panel: #171a23;
   --bg-elevated: #1e2230;
@@ -12,6 +14,36 @@
   --mine: #2f5de0;
   --danger: #ff6b6b;
   --ok: #34c77b;
+  --login-glow: #1c2440;
+  --shadow-card: rgba(0, 0, 0, 0.45);
+  --code-bg: #0d1117;
+  --code-inline-bg: rgba(0, 0, 0, 0.35);
+  --scrollbar-hover: #3a4156;
+  --link-color: #7ea2ff;
+  --radius: 10px;
+  --header-h: 56px;
+}
+
+html[data-theme='light'] {
+  --bg: #f4f6fa;
+  --bg-panel: #ffffff;
+  --bg-elevated: #f1f3f8;
+  --bg-hover: #e7eaf2;
+  --border: #dde1ea;
+  --text: #1f2430;
+  --text-dim: #5b6478;
+  --text-faint: #9099ac;
+  --accent: #3b63e6;
+  --accent-hover: #2f53d0;
+  --mine: #3b63e6;
+  --danger: #e0484d;
+  --ok: #1fa463;
+  --login-glow: #dfe7ff;
+  --shadow-card: rgba(31, 36, 48, 0.14);
+  --code-bg: #f6f8fa;
+  --code-inline-bg: rgba(175, 184, 193, 0.28);
+  --scrollbar-hover: #b9c0cf;
+  --link-color: #2f53d0;
   --radius: 10px;
   --header-h: 56px;
 }
@@ -35,6 +67,7 @@ body {
   color: var(--text);
   font-size: 15px;
   line-height: 1.5;
+  transition: background 0.2s ease, color 0.2s ease;
 }
 
 button {
@@ -50,7 +83,7 @@ button {
   height: 100%;
   display: grid;
   place-items: center;
-  background: radial-gradient(1200px 600px at 50% -10%, #1c2440 0%, var(--bg) 60%);
+  background: radial-gradient(1200px 600px at 50% -10%, var(--login-glow) 0%, var(--bg) 60%);
   padding: 20px;
 }
 
@@ -64,7 +97,7 @@ button {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 20px 60px var(--shadow-card);
 }
 
 .login-logo {
@@ -150,6 +183,31 @@ button {
 .sidebar-title {
   font-weight: 700;
   font-size: 16px;
+}
+
+.sidebar-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.theme-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  color: var(--text-dim);
+}
+
+.theme-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.theme-icon {
+  font-size: 15px;
+  line-height: 1;
 }
 
 .logout-btn {
@@ -355,6 +413,34 @@ button {
   padding: 18px 20px 8px;
   display: flex;
   flex-direction: column;
+  position: relative;
+}
+
+.scroll-bottom-btn {
+  position: sticky;
+  bottom: 12px;
+  align-self: center;
+  margin-top: auto;
+  padding-top: 0;
+  margin-bottom: 12px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+  background: var(--bg-panel);
+  border: 1px solid var(--accent);
+  border-radius: 16px;
+  padding: 7px 16px;
+  box-shadow: 0 4px 16px var(--shadow-card);
+  transition: transform 0.15s;
+}
+
+.scroll-bottom-btn:hover {
+  transform: translateY(-1px);
+  color: var(--accent);
 }
 
 .load-older {
@@ -378,16 +464,44 @@ button {
   color: var(--text-faint);
 }
 
+/* ---------- 单条消息（头像列 + 内容列） ---------- */
 .message {
-  margin-bottom: 12px;
-  max-width: min(720px, 78%);
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 4px;
+  max-width: min(720px, 82%);
+}
+
+.message-avatar {
+  width: 34px;
+  flex: 0 0 34px;
+  /* 与气泡首行对齐，连续消息时保留占位 */
+  padding-top: 2px;
+}
+
+.avatar-msg {
+  width: 34px;
+  height: 34px;
+}
+
+.message-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .message-author {
   font-size: 12px;
   color: var(--text-dim);
-  margin: 0 0 3px 12px;
+  margin: 0 0 3px 2px;
   font-weight: 600;
+  line-height: 1.4;
+}
+
+/* 连续消息：昵称不显示时占位仍保留，保证头像/气泡纵向对齐 */
+.message-body > .message-row {
+  margin-top: 0;
 }
 
 .message-row {
@@ -403,10 +517,16 @@ button {
   border-radius: 12px;
   border-top-left-radius: 4px;
   word-break: break-word;
+  min-width: 0;
 }
 
 .message-mine {
   align-self: flex-end;
+  flex-direction: row-reverse;
+}
+
+.message-mine .message-body {
+  align-items: flex-end;
 }
 
 .message-mine .message-row {
@@ -421,11 +541,39 @@ button {
   border-top-right-radius: 4px;
 }
 
+.message-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  flex-shrink: 0;
+  padding-bottom: 4px;
+}
+
+.message-mine .message-meta {
+  align-items: flex-end;
+}
+
+.read-count {
+  font-size: 10px;
+  line-height: 1;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.read-count-mine {
+  color: rgba(255, 255, 255, 0.72);
+}
+
 .message-time {
   font-size: 11px;
   color: var(--text-faint);
   white-space: nowrap;
-  padding-bottom: 3px;
+  line-height: 1;
+}
+
+.message-mine .message-time {
+  color: rgba(255, 255, 255, 0.7);
 }
 
 /* ---------- 富文本内容 ---------- */
@@ -462,7 +610,7 @@ button {
 }
 
 .prose-content a {
-  color: #7ea2ff;
+  color: var(--link-color);
   text-decoration: underline;
 }
 
@@ -481,13 +629,13 @@ button {
 .prose-content code {
   font-family: 'SF Mono', Menlo, Consolas, monospace;
   font-size: 0.88em;
-  background: rgba(0, 0, 0, 0.35);
+  background: var(--code-inline-bg);
   padding: 1px 5px;
   border-radius: 4px;
 }
 
 .prose-content pre {
-  background: #0d1117;
+  background: var(--code-bg);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 10px 12px;
@@ -501,6 +649,42 @@ button {
   font-size: 13px;
   line-height: 1.5;
 }
+
+/* 代码块右上角语言标签 */
+.prose-content pre {
+  position: relative;
+}
+
+/* 代码块右上角语言标签（语言类随消息 HTML 持久化） */
+.prose-content pre:has(> code[class*='language-'])::after {
+  position: absolute;
+  top: 0;
+  right: 0;
+  padding: 2px 8px 3px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  background: var(--bg-hover);
+  border-bottom-left-radius: 6px;
+  pointer-events: none;
+}
+
+.prose-content pre:has(> code.language-javascript)::after { content: 'js'; }
+.prose-content pre:has(> code.language-typescript)::after { content: 'ts'; }
+.prose-content pre:has(> code.language-python)::after { content: 'python'; }
+.prose-content pre:has(> code.language-java)::after { content: 'java'; }
+.prose-content pre:has(> code.language-go)::after { content: 'go'; }
+.prose-content pre:has(> code.language-rust)::after { content: 'rust'; }
+.prose-content pre:has(> code.language-c)::after { content: 'c'; }
+.prose-content pre:has(> code.language-cpp)::after { content: 'c++'; }
+.prose-content pre:has(> code.language-sql)::after { content: 'sql'; }
+.prose-content pre:has(> code.language-bash)::after { content: 'bash'; }
+.prose-content pre:has(> code.language-json)::after { content: 'json'; }
+.prose-content pre:has(> code.language-xml)::after { content: 'html'; }
+.prose-content pre:has(> code.language-css)::after { content: 'css'; }
+.prose-content pre:has(> code.language-yaml)::after { content: 'yaml'; }
+.prose-content pre:has(> code.language-markdown)::after { content: 'md'; }
 
 /* ---------- 输入区 ---------- */
 .editor-wrap {
@@ -548,6 +732,18 @@ button {
   margin: 0 4px;
 }
 
+.code-lang-select {
+  height: 28px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--bg-panel);
+  color: var(--text);
+  font-size: 12px;
+  padding: 0 4px;
+  margin-left: 2px;
+  outline: none;
+}
+
 .editor-scroll {
   max-height: 160px;
   overflow-y: auto;
@@ -575,14 +771,45 @@ button {
 }
 
 .editor-scroll .ProseMirror pre {
-  background: #0d1117;
+  background: var(--code-bg);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 8px 10px;
   font-family: 'SF Mono', Menlo, Consolas, monospace;
   font-size: 13px;
   overflow-x: auto;
+  position: relative;
 }
+
+/* 编辑器内代码块语言标签 */
+.editor-scroll .ProseMirror pre:has(> code[class*='language-'])::after {
+  position: absolute;
+  top: 0;
+  right: 0;
+  padding: 2px 8px 3px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  background: var(--bg-hover);
+  border-bottom-left-radius: 6px;
+  pointer-events: none;
+}
+.editor-scroll .ProseMirror pre:has(> code.language-javascript)::after { content: 'js'; }
+.editor-scroll .ProseMirror pre:has(> code.language-typescript)::after { content: 'ts'; }
+.editor-scroll .ProseMirror pre:has(> code.language-python)::after { content: 'python'; }
+.editor-scroll .ProseMirror pre:has(> code.language-java)::after { content: 'java'; }
+.editor-scroll .ProseMirror pre:has(> code.language-go)::after { content: 'go'; }
+.editor-scroll .ProseMirror pre:has(> code.language-rust)::after { content: 'rust'; }
+.editor-scroll .ProseMirror pre:has(> code.language-c)::after { content: 'c'; }
+.editor-scroll .ProseMirror pre:has(> code.language-cpp)::after { content: 'c++'; }
+.editor-scroll .ProseMirror pre:has(> code.language-sql)::after { content: 'sql'; }
+.editor-scroll .ProseMirror pre:has(> code.language-bash)::after { content: 'bash'; }
+.editor-scroll .ProseMirror pre:has(> code.language-json)::after { content: 'json'; }
+.editor-scroll .ProseMirror pre:has(> code.language-xml)::after { content: 'html'; }
+.editor-scroll .ProseMirror pre:has(> code.language-css)::after { content: 'css'; }
+.editor-scroll .ProseMirror pre:has(> code.language-yaml)::after { content: 'yaml'; }
+.editor-scroll .ProseMirror pre:has(> code.language-markdown)::after { content: 'md'; }
 
 .editor-scroll .ProseMirror blockquote {
   border-left: 3px solid var(--text-faint);
@@ -625,11 +852,155 @@ button {
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #3a4156;
+  background: var(--scrollbar-hover);
 }
 
 ::-webkit-scrollbar-track {
   background: transparent;
+}
+
+/* ================= 代码语法高亮（深色，参考 GitHub Dark） ================= */
+html[data-theme='dark'] .hljs {
+  color: #c9d1d9;
+}
+html[data-theme='dark'] .hljs-comment,
+html[data-theme='dark'] .hljs-quote {
+  color: #8b949e;
+  font-style: italic;
+}
+html[data-theme='dark'] .hljs-keyword,
+html[data-theme='dark'] .hljs-selector-tag,
+html[data-theme='dark'] .hljs-meta .hljs-keyword,
+html[data-theme='dark'] .hljs-doctag,
+html[data-theme='dark'] .hljs-template-tag {
+  color: #ff7b72;
+}
+html[data-theme='dark'] .hljs-string,
+html[data-theme='dark'] .hljs-regexp,
+html[data-theme='dark'] .hljs-meta .hljs-string {
+  color: #a5d6ff;
+}
+html[data-theme='dark'] .hljs-title,
+html[data-theme='dark'] .hljs-title.function_,
+html[data-theme='dark'] .hljs-section {
+  color: #d2a8ff;
+}
+html[data-theme='dark'] .hljs-title.class_,
+html[data-theme='dark'] .hljs-type,
+html[data-theme='dark'] .hljs-built_in {
+  color: #ffa657;
+}
+html[data-theme='dark'] .hljs-number,
+html[data-theme='dark'] .hljs-literal,
+html[data-theme='dark'] .hljs-symbol,
+html[data-theme='dark'] .hljs-bullet,
+html[data-theme='dark'] .hljs-link {
+  color: #79c0ff;
+}
+html[data-theme='dark'] .hljs-attr,
+html[data-theme='dark'] .hljs-attribute,
+html[data-theme='dark'] .hljs-variable,
+html[data-theme='dark'] .hljs-template-variable {
+  color: #79c0ff;
+}
+html[data-theme='dark'] .hljs-name,
+html[data-theme='dark'] .hljs-selector-attr,
+html[data-theme='dark'] .hljs-selector-pseudo,
+html[data-theme='dark'] .hljs-selector-class,
+html[data-theme='dark'] .hljs-selector-id {
+  color: #7ee787;
+}
+html[data-theme='dark'] .hljs-meta {
+  color: #79c0ff;
+}
+html[data-theme='dark'] .hljs-tag {
+  color: #8b949e;
+}
+html[data-theme='dark'] .hljs-deletion {
+  color: #ffa198;
+  background: rgba(255, 129, 130, 0.12);
+}
+html[data-theme='dark'] .hljs-addition {
+  color: #7ee787;
+  background: rgba(126, 231, 135, 0.12);
+}
+html[data-theme='dark'] .hljs-emphasis {
+  font-style: italic;
+}
+html[data-theme='dark'] .hljs-strong {
+  font-weight: 700;
+}
+
+/* ================= 代码语法高亮（浅色，参考 GitHub Light） ================= */
+html[data-theme='light'] .hljs {
+  color: #24292f;
+}
+html[data-theme='light'] .hljs-comment,
+html[data-theme='light'] .hljs-quote {
+  color: #6e7781;
+  font-style: italic;
+}
+html[data-theme='light'] .hljs-keyword,
+html[data-theme='light'] .hljs-selector-tag,
+html[data-theme='light'] .hljs-meta .hljs-keyword,
+html[data-theme='light'] .hljs-doctag,
+html[data-theme='light'] .hljs-template-tag {
+  color: #cf222e;
+}
+html[data-theme='light'] .hljs-string,
+html[data-theme='light'] .hljs-regexp,
+html[data-theme='light'] .hljs-meta .hljs-string {
+  color: #0a3069;
+}
+html[data-theme='light'] .hljs-title,
+html[data-theme='light'] .hljs-title.function_,
+html[data-theme='light'] .hljs-section {
+  color: #8250df;
+}
+html[data-theme='light'] .hljs-title.class_,
+html[data-theme='light'] .hljs-type,
+html[data-theme='light'] .hljs-built_in {
+  color: #953800;
+}
+html[data-theme='light'] .hljs-number,
+html[data-theme='light'] .hljs-literal,
+html[data-theme='light'] .hljs-symbol,
+html[data-theme='light'] .hljs-bullet,
+html[data-theme='light'] .hljs-link {
+  color: #0550ae;
+}
+html[data-theme='light'] .hljs-attr,
+html[data-theme='light'] .hljs-attribute,
+html[data-theme='light'] .hljs-variable,
+html[data-theme='light'] .hljs-template-variable {
+  color: #0550ae;
+}
+html[data-theme='light'] .hljs-name,
+html[data-theme='light'] .hljs-selector-attr,
+html[data-theme='light'] .hljs-selector-pseudo,
+html[data-theme='light'] .hljs-selector-class,
+html[data-theme='light'] .hljs-selector-id {
+  color: #116329;
+}
+html[data-theme='light'] .hljs-meta {
+  color: #0550ae;
+}
+html[data-theme='light'] .hljs-tag {
+  color: #6e7781;
+}
+html[data-theme='light'] .hljs-deletion {
+  color: #82071e;
+  background: rgba(255, 129, 130, 0.18);
+}
+html[data-theme='light'] .hljs-addition {
+  color: #116329;
+  background: rgba(126, 231, 135, 0.22);
+}
+html[data-theme='light'] .hljs-emphasis {
+  font-style: italic;
+}
+html[data-theme='light'] .hljs-strong {
+  font-weight: 700;
 }
 
 /* ================= 移动端 ================= */

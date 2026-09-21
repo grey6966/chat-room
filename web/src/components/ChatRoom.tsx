@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import type { ChatMessage, OnlineUser, SendAck } from '../types';
+import type { ThemeMode } from '../theme';
 import MessageList from './MessageList';
 import RichTextEditor from './RichTextEditor';
+import ThemeToggle from './ThemeToggle';
 
 interface DmConversation {
   peer: string;
@@ -21,8 +23,12 @@ interface ChatRoomProps {
   onBackToPublic: () => void;
   onSend: (html: string) => Promise<SendAck>;
   onLoadOlder?: () => Promise<void>;
+  /** 当前贴底可见的最新消息（用于群聊已读上报） */
+  onVisibleMessage?: (messageId: number) => void;
   onUploadImage: (file: File) => Promise<string>;
   onLogout: () => void;
+  themeMode: ThemeMode;
+  onCycleTheme: () => void;
 }
 
 export default function ChatRoom({
@@ -36,8 +42,11 @@ export default function ChatRoom({
   onBackToPublic,
   onSend,
   onLoadOlder,
+  onVisibleMessage,
   onUploadImage,
   onLogout,
+  themeMode,
+  onCycleTheme,
 }: ChatRoomProps) {
   const others = onlineUsers.filter((u) => u.username !== me);
   const totalUnread = [...conversations.values()].reduce((n, c) => n + c.unread, 0);
@@ -54,9 +63,12 @@ export default function ChatRoom({
       <aside className="sidebar">
         <div className="sidebar-header">
           <span className="sidebar-title">💬 聊天室</span>
-          <button className="logout-btn" title="退出登录" onClick={onLogout}>
-            退出
-          </button>
+          <div className="sidebar-actions">
+            <ThemeToggle mode={themeMode} onCycle={onCycleTheme} />
+            <button className="logout-btn" title="退出登录" onClick={onLogout}>
+              退出
+            </button>
+          </div>
         </div>
 
         <div className="user-me">
@@ -125,7 +137,13 @@ export default function ChatRoom({
           </span>
         </header>
 
-        <MessageList me={me} messages={messages} onLoadOlder={view === 'public' ? onLoadOlder : undefined} />
+        <MessageList
+          me={me}
+          messages={messages}
+          resetKey={view}
+          onLoadOlder={view === 'public' ? onLoadOlder : undefined}
+          onVisibleMessage={view === 'public' ? onVisibleMessage : undefined}
+        />
 
         <RichTextEditor resetKey={view} onSend={onSend} onUploadImage={onUploadImage} />
       </main>

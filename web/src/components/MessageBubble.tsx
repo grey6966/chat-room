@@ -42,14 +42,30 @@ export default function MessageBubble({ message, mine, showAuthor }: MessageBubb
 
   return (
     <div className={`message ${mine ? 'message-mine' : ''}`}>
-      {showAuthor && <div className="message-author">{mine ? '我' : message.senderName}</div>}
-      <div className="message-row">
-        <div
-          ref={bodyRef}
-          className="message-bubble prose-content"
-          dangerouslySetInnerHTML={{ __html: renderSafe(message.content) }}
-        />
-        <span className="message-time">{formatTime(message.createdAt)}</span>
+      {!mine && (
+        <div className="message-avatar">
+          {showAuthor && <span className="avatar avatar-msg">{message.senderName.slice(0, 1).toUpperCase()}</span>}
+        </div>
+      )}
+      <div className="message-body">
+        {showAuthor && (
+          <div className="message-author">{mine ? '我' : message.senderName}</div>
+        )}
+        <div className="message-row">
+          <div
+            ref={bodyRef}
+            className="message-bubble prose-content"
+            dangerouslySetInnerHTML={{ __html: renderSafe(message.content) }}
+          />
+          <span className="message-meta">
+            {message.kind === 'public' && mine && (
+              <span className="read-count read-count-mine" title={`已有 ${message.readByCount ?? 0} 人已读`}>
+                👁 {message.readByCount ?? 0} 人已读
+              </span>
+            )}
+            <span className="message-time">{formatTime(message.createdAt)}</span>
+          </span>
+        </div>
       </div>
     </div>
   );

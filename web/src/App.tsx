@@ -2,13 +2,15 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   fetchPublicHistory,
   joinRoom,
+  markPublicRead,
   openDm,
   sendDm,
   sendPublic,
   socket,
   uploadImage,
 } from './api';
-import type { ChatMessage, OnlineUser } from './types';
+import type { ChatMessage, OnlineUser, PublicReadUpdate } from './types';
+import { useTheme } from './theme';
 import Login from './components/Login';
 import ChatRoom from './components/ChatRoom';
 
@@ -34,6 +36,14 @@ export default function App() {
   const [conversations, setConversations] = useState<Map<string, DmConversation>>(new Map());
   const [view, setView] = useState<View>('public');
 
+  // 公共频道已读游标（我已上报/服务端已知的最新消息 id）
+  const [lastReadId, setLastReadId] = useState<number | null>(null);
+  const lastReadIdRef = useRef<number | null>(null);
+  lastReadIdRef.current = lastReadId;
+
+  // 主题（浅色/深色/跟随系统），登录页与聊天室共用
+  const { mode: themeMode, cycleTheme } = useTheme();
+
   const usernameRef = useRef<string | null>(null);
   usernameRef.current = username;
   const viewRef = useRef<View>('public');
@@ -54,6 +64,7 @@ export default function App() {
       setPublicMessages(ack.recentMessages);
       setConversations(new Map());
       setView('public');
+      setLastReadId(ack.lastReadMessageId);
       return true;
     } catch (e) {
       setLoginError(e instanceof Error ? e.message : '连接失败');
@@ -92,6 +103,20 @@ export default function App() {
       );
     };
 
+    const onPublicRead = (update: PublicReadUpdate) => {
+      setPublicMessages((prev) => {
+        let changed = false;
+        const next = prev.map((m) => {
+          if (m.kind !== 'public') return m;
+          const count = update.counts[String(m.id)];
+          if (count === undefined || m.readByCount === count) return m;
+          changed = true;
+          return { ...m, readByCount: count };
+        });
+        return changed ? next : prev;
+      });
+    };
+
     const onDm = (msg: ChatMessage) => {
       const peer = msg.senderName === usernameRef.current ? msg.receiverName! : msg.senderName;
       const isActive = viewRef.current === peer;
@@ -109,10 +134,12 @@ export default function App() {
 
     socket.on('presence:update', onPresence);
     socket.on('public:message', onPublic);
+    socket.on('public:read', onPublicRead);
     socket.on('dm:message', onDm);
     return () => {
       socket.off('presence:update', onPresence);
       socket.off('public:message', onPublic);
+      socket.off('public:read', onPublicRead);
       socket.off('dm:message', onDm);
     };
   }, []);
@@ -174,6 +201,14 @@ export default function App() {
     }
   }, [publicMessages]);
 
+  /* ---------- 群聊已读：上报当前在底部可见的最新消息 ---------- */
+  const reportVisibleMessage = useCallback((messageId: number) => {
+    const prev = lastReadIdRef.current;
+    if (prev !== null && messageId <= prev) return;
+    setLastReadId(messageId);
+    markPublicRead(messageId);
+  }, []);
+
   /* ---------- 退出登录 ---------- */
   const logout = useCallback(() => {
     socket.disconnect();
@@ -182,6 +217,7 @@ export default function App() {
     setConversations(new Map());
     setOnlineUsers([]);
     setView('public');
+    setLastReadId(null);
     socket.connect();
   }, []);
 
@@ -210,8 +246,11 @@ export default function App() {
       onBackToPublic={backToPublic}
       onSend={handleSend}
       onLoadOlder={view === 'public' ? loadOlderPublic : undefined}
+      onVisibleMessage={view === 'public' ? reportVisibleMessage : undefined}
       onUploadImage={uploadImage}
       onLogout={logout}
+      themeMode={themeMode}
+      onCycleTheme={cycleTheme}
     />
   );
 }

@@ -207,9 +207,43 @@ async function main(): Promise<void> {
     const empty = await bob.timeout(3000).emitWithAck('public:send', '   ');
     check('空白消息被拒', empty.ok === false);
 
+    /* ---------- 10. 群聊已读回执 ---------- */
+    console.log('\n[10] 群聊已读回执');
+    const dave = connect();
+    await waitConnected(dave);
+    const daveAck = await dave.timeout(3000).emitWithAck('join', 'dave');
+    check('dave 进入成功', daveAck.ok === true);
+
+    const msgPromise = waitFor<{ id: number }>(dave, 'public:message');
+    const sendAck = await alice.timeout(3000).emitWithAck('public:send', '<p>已读测试</p>');
+    check('已读测试消息发送成功', sendAck.ok === true, sendAck);
+    const readMsg = await msgPromise;
+
+    const readUpdatePromise = waitFor<{ upTo: number; counts: Record<string, number> }>(
+      alice,
+      'public:read'
+    );
+    dave.emit('public:read', readMsg.id);
+    const readUpdate = await readUpdatePromise;
+    check('回执携带上报位置', readUpdate.upTo === readMsg.id);
+    check('发送者之外 1 人已读', readUpdate.counts[String(readMsg.id)] === 1, readUpdate.counts);
+
+    // dave 重新加入：初始消息应带 readByCount，且游标恢复
+    const daveRejoin = await dave.timeout(3000).emitWithAck('join', 'dave');
+    check(
+      '重新加入拿到历史已读数',
+      daveRejoin.ok === true &&
+        daveRejoin.lastReadMessageId === readMsg.id &&
+        daveRejoin.recentMessages.some(
+          (m: { id: number; readByCount?: number }) => m.id === readMsg.id && m.readByCount === 1
+        ),
+      { last: daveRejoin.lastReadMessageId }
+    );
+
     alice.disconnect();
     bob.disconnect();
     reborn.disconnect();
+    dave.disconnect();
   } catch (e) {
     failures++;
     console.error('测试执行异常:', e);

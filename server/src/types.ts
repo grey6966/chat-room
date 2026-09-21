@@ -9,6 +9,8 @@ export interface ChatMessageDTO {
   receiverName: string | null;
   content: string;
   createdAt: number;
+  /** 群聊消息：除发送者外已读到该消息的人数（仅增量快照/新消息携带） */
+  readByCount?: number;
 }
 
 export interface OnlineUserDTO {

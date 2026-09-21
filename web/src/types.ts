@@ -9,6 +9,8 @@ export interface ChatMessage {
   receiverName: string | null;
   content: string;
   createdAt: number;
+  /** 群聊消息：除发送者外已读人数（服务端随消息/回执下发） */
+  readByCount?: number;
 }
 
 export interface OnlineUser {
@@ -16,9 +18,19 @@ export interface OnlineUser {
   username: string;
 }
 
+/** 群聊已读回执增量：upTo 之后最近窗口内每条消息的最新已读数 */
+export interface PublicReadUpdate {
+  upTo: number;
+  counts: Record<string, number>;
+}
+
 export type Ack<T> = ({ ok: true } & T) | { ok: false; error: string };
 
-export type JoinAck = Ack<{ user: OnlineUser; recentMessages: ChatMessage[] }>;
+export type JoinAck = Ack<{
+  user: OnlineUser;
+  recentMessages: ChatMessage[];
+  lastReadMessageId: number | null;
+}>;
 export type SendAck = Ack<{ message?: ChatMessage }>;
 export type DmOpenAck = Ack<{ peer: string; messages: ChatMessage[] }>;
 export type HistoryAck = Ack<{ messages: ChatMessage[] }>;
