@@ -34,7 +34,17 @@ export function openDb(): DB {
       ON messages (kind, createdAt) WHERE kind = 'public';
     CREATE INDEX IF NOT EXISTS idx_messages_dm_pair
       ON messages (kind, senderId, receiverId, createdAt);
+
+    -- 群消息已读游标：每个用户一行，lastReadId 为其已看到的最大群消息 ID
+    CREATE TABLE IF NOT EXISTS message_reads (
+      userId      INTEGER PRIMARY KEY REFERENCES users(id),
+      lastReadId  INTEGER NOT NULL DEFAULT 0,
+      updatedAt   INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_reads_cursor
+      ON message_reads (lastReadId);
   `);
+
 
   db = database;
   return database;

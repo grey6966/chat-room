@@ -1,6 +1,6 @@
 import type { Server as IOServer, Socket } from 'socket.io';
 import type { Database } from 'better-sqlite3';
-import type { Ack, ChatMessageDTO, OnlineUserDTO } from './types.js';
+import type { Ack, ChatMessageDTO, OnlineUserDTO, ReadReceiptDTO } from './types.js';
 import { isContentEmpty, sanitizeContent } from './sanitize.js';
 
 interface UserIdRow {
@@ -82,6 +82,21 @@ export function registerChat(io: IOServer, db: Database): void {
           OR (m.receiverId = @me AND su.username = @peer))
       ORDER BY m.id DESC LIMIT @limit`
   );
+  const maxPublicIdStmt = db.prepare(`SELECT COALESCE(MAX(id), 0) AS id FROM messages WHERE kind = 'public'`);
+  const getReadStmt = db.prepare(`SELECT lastReadId FROM message_reads WHERE userId = ?`);
+  const insertReadStmt = db.prepare(
+    `INSERT INTO message_reads (userId, lastReadId, updatedAt) VALUES (?, ?, ?)`
+  );
+  const advanceReadStmt = db.prepare(
+    `UPDATE message_reads SET lastReadId = ?, updatedAt = ? WHERE userId = ? AND lastReadId < ?`
+  );
+  // 某条群消息的已读人数：游标 >= 消息 ID，且不是发送者本人
+  const countReadersStmt = db.prepare(
+    `SELECT COUNT(*) AS n FROM message_reads r
+      JOIN users u ON u.id = r.userId
+      JOIN messages m ON m.id = @messageId
+      WHERE r.lastReadId >= @messageId AND u.id <> m.senderId`
+  );
 
   function onlineUsers(): OnlineUserDTO[] {
     return [...presence.entries()]
@@ -91,6 +106,31 @@ export function registerChat(io: IOServer, db: Database): void {
 
   function broadcastPresence(): void {
     io.emit('presence:update', onlineUsers());
+  }
+
+  /** 推进用户的群聊已读游标；返回 true 表示游标实际前进（需要广播） */
+  function advanceReadCursor(userId: number, lastReadId: number): boolean {
+    const row = getReadStmt.get(userId) as { lastReadId: number } | undefined;
+    if (!row) {
+      insertReadStmt.run(userId, lastReadId, Date.now());
+      return true;
+    }
+    if (lastReadId <= row.lastReadId) return false;
+    advanceReadStmt.run(lastReadId, Date.now(), userId, lastReadId);
+    return true;
+  }
+
+  /** 群消息已读人数（不含发送者自己） */
+  function readCountFor(messageId: number): number {
+    const row = countReadersStmt.get({ messageId }) as { n: number };
+    return row.n;
+  }
+
+  /** 给群消息 DTO 附带当前已读数 */
+  function withReadCount(message: ChatMessageDTO): ChatMessageDTO {
+    return message.kind === 'public'
+      ? { ...message, readCount: readCountFor(message.id) }
+      : message;
   }
 
   io.on('connection', (socket: Socket) => {
@@ -124,10 +164,20 @@ export function registerChat(io: IOServer, db: Database): void {
 
       const recent = (publicHistoryStmt.all({ before: null, limit: HISTORY_LIMIT }) as MessageRow[])
         .map(toMessageDTO)
-        .reverse();
+        .reverse()
+        .map(withReadCount);
 
       cb?.({ ok: true, user: { id: row.id, username }, recentMessages: recent });
       broadcastPresence();
+
+      // 重新进入即把已读游标推进到当前最新群消息；游标前进时广播给其他人
+      const maxRow = maxPublicIdStmt.get() as { id: number };
+      if (maxRow.id > 0 && advanceReadCursor(row.id, maxRow.id)) {
+        io.to('public').emit('read:update', {
+          username,
+          lastReadId: maxRow.id,
+        } satisfies ReadReceiptDTO);
+      }
     });
 
     /* ---------- 频道消息 ---------- */
@@ -154,7 +204,10 @@ export function registerChat(io: IOServer, db: Database): void {
         receiverName: null,
         content,
         createdAt: now,
+        readCount: 0,
       };
+      // 发送者自己必然已读：推进游标（不计入已读数）
+      advanceReadCursor(socket.data.userId as number, message.id);
       io.to('public').emit('public:message', message);
       cb?.({ ok: true });
     });
@@ -223,6 +276,27 @@ export function registerChat(io: IOServer, db: Database): void {
       cb?.({ ok: true, peer: peerName, messages: rows.map(toMessageDTO).reverse() });
     });
 
+    /* ---------- 已读上报：客户端在群聊底部看到最新消息时上报已读游标 ---------- */
+    socket.on('read:report', (rawLastReadId: unknown, cb?: (r: Ack<Record<string, unknown>>) => void) => {
+      const username = socket.data.username as string | undefined;
+      const userId = socket.data.userId as number | undefined;
+      if (!username || !userId) {
+        cb?.({ ok: false, error: '未加入聊天室' });
+        return;
+      }
+      if (typeof rawLastReadId !== 'number' || !Number.isFinite(rawLastReadId) || rawLastReadId <= 0) {
+        cb?.({ ok: false, error: '参数错误' });
+        return;
+      }
+      const lastReadId = Math.floor(rawLastReadId);
+
+      // 游标没有实际前进（重复上报旧值）时不广播，避免无效流量
+      if (advanceReadCursor(userId, lastReadId)) {
+        io.to('public').emit('read:update', { username, lastReadId } satisfies ReadReceiptDTO);
+      }
+      cb?.({ ok: true });
+    });
+
     /* ---------- 上翻加载更早的频道历史 ---------- */
     socket.on('public:history', (before: unknown, cb?: (r: HistoryAck) => void) => {
       if (!socket.data.username) return;
@@ -230,7 +304,7 @@ export function registerChat(io: IOServer, db: Database): void {
         before: typeof before === 'number' ? before : null,
         limit: HISTORY_LIMIT,
       }) as MessageRow[];
-      cb?.({ ok: true, messages: rows.map(toMessageDTO).reverse() });
+      cb?.({ ok: true, messages: rows.map(toMessageDTO).reverse().map(withReadCount) });
     });
 
     /* ---------- 断线：该用户所有标签页都关闭后才判定下线 ---------- */

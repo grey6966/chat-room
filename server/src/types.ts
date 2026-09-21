@@ -9,6 +9,14 @@ export interface ChatMessageDTO {
   receiverName: string | null;
   content: string;
   createdAt: number;
+  /** 群消息：已读人数（不含发送者自己），实时通过 read:update 事件更新 */
+  readCount?: number;
+}
+
+/** 已读回执增量：某用户读到了 lastReadId，其之前的群消息已读数 +1 */
+export interface ReadReceiptDTO {
+  username: string;
+  lastReadId: number;
 }
 
 export interface OnlineUserDTO {

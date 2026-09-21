@@ -48,6 +48,11 @@ export function fetchPublicHistory(before?: number): Promise<HistoryAck> {
   return emitWithAck<HistoryAck>('public:history', before ?? null);
 }
 
+/** 上报群聊已读游标（看到的最大群消息 ID），无需 ack */
+export function reportRead(lastReadId: number): void {
+  socket.emit('read:report', lastReadId);
+}
+
 /** 上传图片，返回可直接放入 <img src> 的同源相对路径 */
 export async function uploadImage(file: File): Promise<string> {
   const form = new FormData();

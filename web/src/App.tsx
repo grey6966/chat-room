@@ -3,14 +3,16 @@ import {
   fetchPublicHistory,
   joinRoom,
   openDm,
+  reportRead,
   sendDm,
   sendPublic,
   socket,
   uploadImage,
 } from './api';
-import type { ChatMessage, OnlineUser } from './types';
+import type { ChatMessage, OnlineUser, ReadReceipt } from './types';
 import Login from './components/Login';
 import ChatRoom from './components/ChatRoom';
+import { useTheme } from './theme';
 
 interface DmConversation {
   peer: string;
@@ -22,6 +24,7 @@ interface DmConversation {
 type View = 'public' | string; // 'public' 或私聊对象用户名
 
 export default function App() {
+  const { mode: themeMode, resolved: themeResolved, cycleMode: cycleTheme } = useTheme();
   const [username, setUsername] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [loginError, setLoginError] = useState('');
@@ -38,6 +41,8 @@ export default function App() {
   usernameRef.current = username;
   const viewRef = useRef<View>('public');
   viewRef.current = view;
+  // 记录各用户已上报到的游标，避免断线重连等重复回执导致已读数被多加
+  const readCursorsRef = useRef<Map<string, number>>(new Map());
 
   /* ---------- 登录 / 断线重连后重新加入 ---------- */
   const doJoin = useCallback(async (name: string) => {
@@ -53,6 +58,7 @@ export default function App() {
       setUsername(name);
       setPublicMessages(ack.recentMessages);
       setConversations(new Map());
+      readCursorsRef.current = new Map();
       setView('public');
       return true;
     } catch (e) {
@@ -107,13 +113,34 @@ export default function App() {
       });
     };
 
+    const onRead = (receipt: ReadReceipt) => {
+      if (receipt.username === usernameRef.current) return; // 自己的已读不计入
+      const cursors = readCursorsRef.current;
+      const prev = cursors.get(receipt.username) ?? 0;
+      if (receipt.lastReadId <= prev) return; // 游标未前进，忽略重复回执
+      cursors.set(receipt.username, receipt.lastReadId);
+      // 只对 (prev, lastReadId] 区间内、且非该用户自己发的消息计数 +1
+      setPublicMessages((msgs) =>
+        msgs.map((m) =>
+          m.kind === 'public' &&
+          m.id > prev &&
+          m.id <= receipt.lastReadId &&
+          m.senderName !== receipt.username
+            ? { ...m, readCount: (m.readCount ?? 0) + 1 }
+            : m
+        )
+      );
+    };
+
     socket.on('presence:update', onPresence);
     socket.on('public:message', onPublic);
     socket.on('dm:message', onDm);
+    socket.on('read:update', onRead);
     return () => {
       socket.off('presence:update', onPresence);
       socket.off('public:message', onPublic);
       socket.off('dm:message', onDm);
+      socket.off('read:update', onRead);
     };
   }, []);
 
@@ -174,6 +201,17 @@ export default function App() {
     }
   }, [publicMessages]);
 
+  /* ---------- 群聊已读：在公共频道底部看到最新消息时上报游标 ---------- */
+  const lastReportedReadRef = useRef(0);
+  const markPublicRead = useCallback(
+    (lastId: number) => {
+      if (viewRef.current !== 'public' || lastId <= lastReportedReadRef.current) return;
+      lastReportedReadRef.current = lastId;
+      reportRead(lastId);
+    },
+    []
+  );
+
   /* ---------- 退出登录 ---------- */
   const logout = useCallback(() => {
     socket.disconnect();
@@ -181,6 +219,8 @@ export default function App() {
     setPublicMessages([]);
     setConversations(new Map());
     setOnlineUsers([]);
+    readCursorsRef.current = new Map();
+    lastReportedReadRef.current = 0;
     setView('public');
     socket.connect();
   }, []);
@@ -206,10 +246,14 @@ export default function App() {
       messages={view === 'public' ? publicMessages : activeConversation?.messages ?? []}
       view={view}
       conversations={conversations}
+      themeMode={themeMode}
+      themeResolved={themeResolved}
+      onCycleTheme={cycleTheme}
       onOpenConversation={openConversation}
       onBackToPublic={backToPublic}
       onSend={handleSend}
       onLoadOlder={view === 'public' ? loadOlderPublic : undefined}
+      onReadMessages={view === 'public' ? markPublicRead : undefined}
       onUploadImage={uploadImage}
       onLogout={logout}
     />

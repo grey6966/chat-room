@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChatMessage } from '../types';
 import MessageBubble from './MessageBubble';
 
@@ -6,19 +6,59 @@ interface MessageListProps {
   me: string;
   messages: ChatMessage[];
   onLoadOlder?: () => Promise<void>;
+  onReadMessages?: (lastId: number) => void;
 }
 
-export default function MessageList({ me, messages, onLoadOlder }: MessageListProps) {
+const NEAR_BOTTOM_PX = 160;
+
+export default function MessageList({ me, messages, onLoadOlder, onReadMessages }: MessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
+  const [atBottom, setAtBottom] = useState(true);
 
-  // 新消息时：若已在底部附近则贴底，否则保留滚动位置
-  useEffect(() => {
+  const isNearBottom = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return true;
+    return el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
+  }, []);
+
+  const scrollToBottom = useCallback((smooth = false) => {
     const el = scrollRef.current;
     if (!el) return;
-    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 160;
+    el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
+    setAtBottom(true);
+  }, []);
+
+  // 新消息时：若已在底部附近则贴底，否则保留滚动位置；在底部时上报已读
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || messages.length === 0) return;
+    const nearBottom = isNearBottom();
     if (nearBottom) el.scrollTop = el.scrollHeight;
-  }, [messages]);
+    setAtBottom(nearBottom);
+    if (nearBottom && onReadMessages) {
+      onReadMessages(messages[messages.length - 1].id);
+    }
+  }, [messages, isNearBottom, onReadMessages]);
+
+  // 切换会话（组件复用）时直接回到底部
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+    setAtBottom(true);
+    if (onReadMessages && messages.length > 0) {
+      onReadMessages(messages[messages.length - 1].id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const onScroll = () => {
+    const near = isNearBottom();
+    setAtBottom(near);
+    if (near && onReadMessages && messages.length > 0) {
+      onReadMessages(messages[messages.length - 1].id);
+    }
+  };
 
   const loadOlder = async () => {
     if (!onLoadOlder || loadingOlder) return;
@@ -36,7 +76,7 @@ export default function MessageList({ me, messages, onLoadOlder }: MessageListPr
   let lastTs = 0;
 
   return (
-    <div className="message-list" ref={scrollRef}>
+    <div className="message-list" ref={scrollRef} onScroll={onScroll}>
       {onLoadOlder && (
         <button className="load-older" onClick={loadOlder} disabled={loadingOlder}>
           {loadingOlder ? '加载中…' : '↑ 加载更早的消息'}
@@ -57,6 +97,12 @@ export default function MessageList({ me, messages, onLoadOlder }: MessageListPr
           />
         );
       })}
+
+      {!atBottom && (
+        <button className="back-to-bottom" onClick={() => scrollToBottom(true)} title="回到底部">
+          ↓ 最新消息
+        </button>
+      )}
     </div>
   );
 }

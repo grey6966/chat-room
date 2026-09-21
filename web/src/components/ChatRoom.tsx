@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { ChatMessage, OnlineUser, SendAck } from '../types';
+import type { ResolvedTheme, ThemeMode } from '../theme';
 import MessageList from './MessageList';
 import RichTextEditor from './RichTextEditor';
 
@@ -17,10 +18,14 @@ interface ChatRoomProps {
   messages: ChatMessage[];
   view: string; // 'public' 或私聊对象
   conversations: Map<string, DmConversation>;
+  themeMode: ThemeMode;
+  themeResolved: ResolvedTheme;
+  onCycleTheme: () => void;
   onOpenConversation: (peer: string) => void;
   onBackToPublic: () => void;
   onSend: (html: string) => Promise<SendAck>;
   onLoadOlder?: () => Promise<void>;
+  onReadMessages?: (lastId: number) => void;
   onUploadImage: (file: File) => Promise<string>;
   onLogout: () => void;
 }
@@ -32,10 +37,14 @@ export default function ChatRoom({
   messages,
   view,
   conversations,
+  themeMode,
+  themeResolved,
+  onCycleTheme,
   onOpenConversation,
   onBackToPublic,
   onSend,
   onLoadOlder,
+  onReadMessages,
   onUploadImage,
   onLogout,
 }: ChatRoomProps) {
@@ -54,9 +63,24 @@ export default function ChatRoom({
       <aside className="sidebar">
         <div className="sidebar-header">
           <span className="sidebar-title">💬 聊天室</span>
-          <button className="logout-btn" title="退出登录" onClick={onLogout}>
-            退出
-          </button>
+          <div className="sidebar-actions">
+            <button
+              className="icon-btn"
+              title={
+                themeMode === 'light'
+                  ? '当前：浅色模式（点击切换深色）'
+                  : themeMode === 'dark'
+                    ? '当前：深色模式（点击跟随系统）'
+                    : `当前：跟随系统（${themeResolved === 'dark' ? '深色' : '浅色'}，点击切换浅色）`
+              }
+              onClick={onCycleTheme}
+            >
+              {themeMode === 'light' ? '☀️' : themeMode === 'dark' ? '🌙' : '🖥'}
+            </button>
+            <button className="logout-btn" title="退出登录" onClick={onLogout}>
+              退出
+            </button>
+          </div>
         </div>
 
         <div className="user-me">
@@ -125,7 +149,12 @@ export default function ChatRoom({
           </span>
         </header>
 
-        <MessageList me={me} messages={messages} onLoadOlder={view === 'public' ? onLoadOlder : undefined} />
+        <MessageList
+          me={me}
+          messages={messages}
+          onLoadOlder={view === 'public' ? onLoadOlder : undefined}
+          onReadMessages={view === 'public' ? onReadMessages : undefined}
+        />
 
         <RichTextEditor resetKey={view} onSend={onSend} onUploadImage={onUploadImage} />
       </main>

@@ -47,6 +47,25 @@ lowlight.registerAlias({
   markdown: ['md'],
 });
 
+/** 代码块语言下拉选项（需与上面注册的语言/别名保持一致） */
+export const CODE_LANGUAGES: { value: string; label: string }[] = [
+  { value: 'javascript', label: 'JavaScript' },
+  { value: 'typescript', label: 'TypeScript' },
+  { value: 'python', label: 'Python' },
+  { value: 'java', label: 'Java' },
+  { value: 'go', label: 'Go' },
+  { value: 'rust', label: 'Rust' },
+  { value: 'c', label: 'C' },
+  { value: 'cpp', label: 'C++' },
+  { value: 'sql', label: 'SQL' },
+  { value: 'bash', label: 'Bash' },
+  { value: 'json', label: 'JSON' },
+  { value: 'xml', label: 'HTML / XML' },
+  { value: 'css', label: 'CSS' },
+  { value: 'yaml', label: 'YAML' },
+  { value: 'markdown', label: 'Markdown' },
+];
+
 /**
  * 对渲染后的 <code> 块就地高亮。
  * TipTap 代码块输出 <pre><code class="language-xxx">，识别不到语言时保持原文。

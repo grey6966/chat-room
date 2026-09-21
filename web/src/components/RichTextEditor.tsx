@@ -6,7 +6,7 @@ import Link from '@tiptap/extension-link';
 import Image from '@tiptap/extension-image';
 import Placeholder from '@tiptap/extension-placeholder';
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
-import { lowlight } from '../highlight';
+import { CODE_LANGUAGES, lowlight } from '../highlight';
 import type { SendAck } from '../types';
 
 interface EditorToolbarProps {
@@ -17,6 +17,18 @@ interface EditorToolbarProps {
 
 function Toolbar({ editor, onPickImage, uploading }: EditorToolbarProps) {
   const btn = (active: boolean) => `toolbar-btn${active ? ' active' : ''}`;
+
+  // TipTap 的激活态不会触发 React 重渲染，订阅事务以刷新工具栏按钮/语言下拉
+  const [, forceSync] = useState(0);
+  useEffect(() => {
+    const onUpdate = () => forceSync((n) => n + 1);
+    editor.on('transaction', onUpdate);
+    editor.on('selectionUpdate', onUpdate);
+    return () => {
+      editor.off('transaction', onUpdate);
+      editor.off('selectionUpdate', onUpdate);
+    };
+  }, [editor]);
 
   const setLink = () => {
     const previous = editor.getAttributes('link').href as string | undefined;
@@ -80,6 +92,23 @@ function Toolbar({ editor, onPickImage, uploading }: EditorToolbarProps) {
       >
         {'{ }'}
       </button>
+      {editor.isActive('codeBlock') && (
+        <select
+          className="code-lang-select"
+          title="代码语言（实时高亮预览）"
+          value={(editor.getAttributes('codeBlock').language as string | undefined) ?? ''}
+          onChange={(e) =>
+            editor.chain().focus().updateAttributes('codeBlock', { language: e.target.value || null }).run()
+          }
+        >
+          <option value="">纯文本</option>
+          {CODE_LANGUAGES.map((l) => (
+            <option key={l.value} value={l.value}>
+              {l.label}
+            </option>
+          ))}
+        </select>
+      )}
       <span className="toolbar-sep" />
       <button
         type="button"
@@ -136,6 +165,7 @@ interface RichTextEditorProps {
 export default function RichTextEditor({ resetKey, onSend, onUploadImage }: RichTextEditorProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
   const [sendError, setSendError] = useState('');
 
   // 最新回调通过 ref 转发，保证 TipTap 只创建一次的 keydown 处理器不会拿到旧闭包
@@ -145,19 +175,70 @@ export default function RichTextEditor({ resetKey, onSend, onUploadImage }: Rich
   onUploadRef.current = onUploadImage;
   const sendFnRef = useRef<() => void>(() => undefined);
 
+  /**
+   * 插入图片：先用本地 objectURL 在编辑器里即时预览，
+   * 上传成功后把对应 <img> 的 src 换成服务端地址，避免粘贴后长时间无反馈。
+   */
   const insertImageFile = async (editor: Editor, file: File) => {
     if (!file.type.startsWith('image/')) return;
+    const localUrl = URL.createObjectURL(file);
+    const chain = editor.chain().focus();
+    // 非空行内容后先换行，保证图片独占块级节点
+    if (editor.getText().trim().length > 0) chain.insertContent('<p></p>');
+    chain.setImage({ src: localUrl }).run();
+    setPendingCount((n) => n + 1);
     setUploading(true);
     try {
       const url = await onUploadRef.current(file);
-      editor.chain().focus().setImage({ src: url }).run();
+      // 用事务把本地预览地址替换为已上传地址
+      const { state, view } = editor;
+      const tr = state.tr;
+      state.doc.descendants((node, pos) => {
+        if (node.type.name === 'image' && node.attrs.src === localUrl) {
+          tr.setNodeMarkup(pos, undefined, { ...node.attrs, src: url });
+        }
+        return true;
+      });
+      view.dispatch(tr);
     } catch (e) {
+      // 上传失败：移除本地预览节点并提示
+      const { state, view } = editor;
+      const tr = state.tr;
+      state.doc.descendants((node, pos) => {
+        if (node.type.name === 'image' && node.attrs.src === localUrl) {
+          tr.delete(pos, pos + node.nodeSize);
+        }
+        return true;
+      });
+      view.dispatch(tr);
       setSendError(e instanceof Error ? e.message : '图片上传失败');
       setTimeout(() => setSendError(''), 3000);
     } finally {
-      setUploading(false);
+      URL.revokeObjectURL(localUrl);
+      setPendingCount((n) => {
+        const next = n - 1;
+        if (next === 0) setUploading(false);
+        return next;
+      });
     }
   };
+
+  /** 从粘贴板提取图片：优先 files，部分浏览器（如 Safari 截图）只在 items 里给出 */
+  function extractClipboardImages(data: DataTransfer | null | undefined): File[] {
+    if (!data) return [];
+    const fromFiles = Array.from(data.files ?? []).filter((f) => f.type.startsWith('image/'));
+    if (fromFiles.length > 0) return fromFiles;
+    const items = data.items;
+    if (!items) return [];
+    const result: File[] = [];
+    for (const item of items) {
+      if (item.kind === 'file') {
+        const f = item.getAsFile();
+        if (f && f.type.startsWith('image/')) result.push(f);
+      }
+    }
+    return result;
+  }
 
   const editor = useEditor({
     extensions: [
@@ -173,20 +254,19 @@ export default function RichTextEditor({ resetKey, onSend, onUploadImage }: Rich
     ],
     editorProps: {
       handlePaste: (_view, event) => {
-        const files = Array.from(event.clipboardData?.files ?? []);
-        const image = files.find((f) => f.type.startsWith('image/'));
-        if (image) {
-          void insertImageFile(editor!, image);
-          return true;
+        const images = extractClipboardImages(event.clipboardData);
+        if (images.length > 0 && editor) {
+          images.forEach((f) => void insertImageFile(editor, f));
+          return true; // 截获粘贴：图片走上传，不把图片当普通文本插入
         }
         return false; // 普通 HTML/文本走默认粘贴
       },
       handleDrop: (_view, event) => {
         const files = Array.from(event.dataTransfer?.files ?? []);
-        const image = files.find((f) => f.type.startsWith('image/'));
-        if (image) {
+        const images = files.filter((f) => f.type.startsWith('image/'));
+        if (images.length > 0 && editor) {
           event.preventDefault();
-          void insertImageFile(editor!, image);
+          images.forEach((f) => void insertImageFile(editor, f));
           return true;
         }
         return false;
@@ -204,6 +284,11 @@ export default function RichTextEditor({ resetKey, onSend, onUploadImage }: Rich
 
   const doSend = async () => {
     if (!editor) return;
+    if (pendingCount > 0) {
+      setSendError('图片还在上传，请稍候…');
+      setTimeout(() => setSendError(''), 3000);
+      return;
+    }
     const html = editor.getHTML();
     const hasText = editor.getText().trim().length > 0;
     const hasImage = html.includes('<img');
@@ -249,7 +334,9 @@ export default function RichTextEditor({ resetKey, onSend, onUploadImage }: Rich
             e.target.value = '';
           }}
         />
-        <span className="editor-hint">支持富文本 · 代码块 · 图片（粘贴/拖拽上传，≤5MB）</span>
+        <span className="editor-hint">
+          {pendingCount > 0 ? `图片上传中…（${pendingCount}）` : '支持富文本 · 代码块 · 图片（可直接 Ctrl/⌘+V 粘贴，≤5MB）'}
+        </span>
         <button type="button" className="btn-primary btn-send" onClick={doSend} disabled={uploading}>
           发送
         </button>

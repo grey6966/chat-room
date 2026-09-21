@@ -207,6 +207,43 @@ async function main(): Promise<void> {
     const empty = await bob.timeout(3000).emitWithAck('public:send', '   ');
     check('空白消息被拒', empty.ok === false);
 
+    /* ---------- 10. 群消息已读回执 ---------- */
+    console.log('\n[10] 群消息已读回执');
+    const bobGotReadMsg = waitFor<{ id: number }>(bob, 'public:message');
+    const aliceGotReceipt = waitFor<{ username: string; lastReadId: number }>(alice, 'read:update');
+    await alice.timeout(3000).emitWithAck('public:send', '<p>已读测试</p>');
+    const readMsg = await bobGotReadMsg;
+    await bob.timeout(3000).emitWithAck('read:report', readMsg.id);
+    const receipt = await aliceGotReceipt;
+    check(
+      '发送者收到 bob 的已读回执',
+      receipt.username === 'bob' && receipt.lastReadId === readMsg.id,
+      receipt
+    );
+
+    // 重复上报旧游标不应产生广播；上报更大的游标应再次广播
+    const noDup = expectNoEvent(alice, 'read:update');
+    await bob.timeout(3000).emitWithAck('read:report', readMsg.id);
+    check('重复旧游标不重复广播', await noDup);
+
+    // 新用户进入：历史消息带 readCount，且其加入即把已读游标推到最新
+    const dave = connect();
+    await waitConnected(dave);
+    // 监听需在 join 之前注册：服务端在 join 处理中就会广播已读游标
+    const daveReceiptPromise = waitFor<{ username: string }>(alice, 'read:update');
+    const daveJoin = await dave.timeout(3000).emitWithAck('join', 'dave');
+    const target = daveJoin.recentMessages.find(
+      (m: { content: string }) => m.content.includes('已读测试')
+    ) as { readCount?: number } | undefined;
+    check(
+      '历史消息附带已读人数（bob 已读，>=1）',
+      !!target && typeof target.readCount === 'number' && target.readCount >= 1,
+      target
+    );
+    const daveReceipt = await daveReceiptPromise;
+    check('新用户进入广播已读游标', daveReceipt.username === 'dave', daveReceipt);
+    dave.disconnect();
+
     alice.disconnect();
     bob.disconnect();
     reborn.disconnect();

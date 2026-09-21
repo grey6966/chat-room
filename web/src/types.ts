@@ -9,6 +9,14 @@ export interface ChatMessage {
   receiverName: string | null;
   content: string;
   createdAt: number;
+  /** 群消息：已读人数（不含发送者自己） */
+  readCount?: number;
+}
+
+/** 已读回执增量：某用户读到了 lastReadId */
+export interface ReadReceipt {
+  username: string;
+  lastReadId: number;
 }
 
 export interface OnlineUser {
