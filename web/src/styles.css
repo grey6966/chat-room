@@ -732,6 +732,78 @@ button {
   margin: 0 4px;
 }
 
+/* ---------- Emoji 表情面板 ---------- */
+.toolbar-zone {
+  position: relative;
+}
+
+.emoji-panel {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 6px);
+  z-index: 50;
+  width: 328px;
+  max-width: calc(100vw - 32px);
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px var(--shadow-card);
+  overflow: hidden;
+}
+
+.emoji-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+
+.emoji-tab {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  border-radius: 6px;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--text-dim);
+}
+
+.emoji-tab:hover {
+  background: var(--bg-hover);
+}
+
+.emoji-tab.active {
+  background: var(--bg-hover);
+  box-shadow: inset 0 -2px 0 var(--accent);
+  color: var(--text);
+}
+
+.emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 2px;
+  max-height: 196px;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.emoji-item {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  font-size: 20px;
+  line-height: 1;
+  user-select: none;
+}
+
+.emoji-item:hover {
+  background: var(--bg-hover);
+  transform: scale(1.15);
+}
+
 .code-lang-select {
   height: 28px;
   border: 1px solid var(--accent);

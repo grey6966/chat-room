@@ -178,6 +178,15 @@ async function main(): Promise<void> {
     check('新用户进入即拿到历史', joinAck.ok && joinAck.recentMessages.length >= 2);
     check('历史含之前的群消息', joinAck.recentMessages.some((m: { content: string }) => m.content.includes('大家好')));
     check('历史内容为净化后的版本', joinAck.recentMessages.every((m: { content: string }) => !m.content.includes('<script')));
+    // 历史消息必须带发送者与时间（历史列名驼峰别名回归：曾因全小写取值导致字段丢失、前端渲染崩溃）
+    check(
+      '历史消息字段完整（senderName/createdAt）',
+      joinAck.recentMessages.every(
+        (m: { senderName?: string; createdAt?: number }) =>
+          typeof m.senderName === 'string' && typeof m.createdAt === 'number'
+      ),
+      joinAck.recentMessages
+    );
 
     const dmHistory = await bob.timeout(3000).emitWithAck('dm:open', 'alice');
     check('私聊历史可查', dmHistory.ok && dmHistory.messages.some((m: { content: string }) => m.content.includes('悄悄告诉你')));
@@ -203,9 +212,25 @@ async function main(): Promise<void> {
     check('非图片文件被拒', badUp.status === 400);
 
     /* ---------- 9. 空消息拦截 ---------- */
-    console.log('\n[9] 空消息拦截');
+    console.log('\n[9] 空消息拦截 / 纯图片消息');
     const empty = await bob.timeout(3000).emitWithAck('public:send', '   ');
     check('空白消息被拒', empty.ok === false);
+    const emptyTags = await bob.timeout(3000).emitWithAck('public:send', '<p><br /></p>');
+    check('无实质内容的空标签被拒', emptyTags.ok === false);
+
+    // 回归：只有图片没有文字时必须允许发送（历史缺陷：被误判为空消息）
+    const imgOnlyPromise = waitFor<{ content: string }>(alice, 'public:message');
+    const imgAck = await bob
+      .timeout(3000)
+      .emitWithAck('public:send', '<p><img src="/uploads/1-a.png" /></p>');
+    check('纯图片消息允许发送', imgAck.ok === true, imgAck);
+    const imgMsg = await imgOnlyPromise;
+    check('纯图片消息正常广播', imgMsg.content.includes('<img'), imgMsg.content);
+    check(
+      '纯图片广播消息字段完整',
+      typeof imgMsg.senderName === 'string' && typeof imgMsg.createdAt === 'number',
+      imgMsg
+    );
 
     /* ---------- 10. 群聊已读回执 ---------- */
     console.log('\n[10] 群聊已读回执');

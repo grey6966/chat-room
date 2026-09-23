@@ -32,10 +32,13 @@ export function sanitizeContent(dirty: string): string {
   });
 }
 
-/** 判断净化后的内容是否为空（纯空白 / 无实质内容） */
+/** 判断净化后的内容是否为空（纯空白 / 无实质内容；图片算有效内容） */
 export function isContentEmpty(html: string): boolean {
+  // 带非空 src 的 <img> 视为有效内容。
+  // 注意：非法协议（javascript:/data: 等）的 src 会被 sanitize-html 移除，
+  // 留下无 src 的 <img /> 空壳，不能放行（sanitize-html 输出的属性值恒带引号）。
+  if (/<img\b[^>]*\bsrc\s*=\s*["'][^"']+["']/i.test(html)) return false;
   const text = html
-    .replace(/<img\b[^>]*>/gi, ' ') // 图片算有效内容
     .replace(/<[^>]*>/g, '')
     .replace(/&nbsp;/g, ' ')
     .trim();

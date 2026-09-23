@@ -10,10 +10,11 @@ interface UserIdRow {
 interface MessageRow {
   id: number;
   kind: 'public' | 'dm';
-  sendername: string;
-  receivername: string | null;
+  // 列名与 SQL 中的 AS 别名保持一致（better-sqlite3 原样保留列名大小写）
+  senderName: string;
+  receiverName: string | null;
   content: string;
-  createdat: number;
+  createdAt: number;
 }
 
 const MAX_CONTENT_LENGTH = 20_000;
@@ -36,13 +37,14 @@ function isValidUsername(name: unknown): name is string {
 }
 
 function toMessageDTO(row: MessageRow): ChatMessageDTO {
+  // 列别名已是驼峰（senderName / receiverName / createdAt），直接透传
   return {
     id: row.id,
     kind: row.kind,
-    senderName: row.sendername,
-    receiverName: row.receivername,
+    senderName: row.senderName,
+    receiverName: row.receiverName,
     content: row.content,
-    createdAt: row.createdat,
+    createdAt: row.createdAt,
   };
 }
 
