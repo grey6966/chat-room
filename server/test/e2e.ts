@@ -207,6 +207,16 @@ async function main(): Promise<void> {
     const empty = await bob.timeout(3000).emitWithAck('public:send', '   ');
     check('空白消息被拒', empty.ok === false);
 
+    const imgOnly = await bob
+      .timeout(3000)
+      .emitWithAck('public:send', `<p></p><img src="${upJson.url}"><p></p>`);
+    check('纯图片消息允许发送', imgOnly.ok === true, imgOnly);
+
+    const imgDm = await bob
+      .timeout(3000)
+      .emitWithAck('dm:send', { to: 'alice', content: `<img src="${upJson.url}">` });
+    check('私聊纯图片消息允许发送', imgDm.ok === true, imgDm);
+
     /* ---------- 10. 群聊已读回执 ---------- */
     console.log('\n[10] 群聊已读回执');
     const dave = connect();

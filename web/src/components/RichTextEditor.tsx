@@ -6,15 +6,19 @@ import Link from '@tiptap/extension-link';
 import Image from '@tiptap/extension-image';
 import Placeholder from '@tiptap/extension-placeholder';
 import { CodeBlock, CODE_LANGUAGES } from './CodeBlock';
+import EmojiPicker from './EmojiPicker';
 import type { SendAck } from '../types';
 
 interface EditorToolbarProps {
   editor: Editor;
   onPickImage: () => void;
+  onToggleEmoji: () => void;
+  emojiOpen: boolean;
+  emojiPanel: React.ReactNode;
   uploading: boolean;
 }
 
-function Toolbar({ editor, onPickImage, uploading }: EditorToolbarProps) {
+function Toolbar({ editor, onPickImage, onToggleEmoji, emojiOpen, emojiPanel, uploading }: EditorToolbarProps) {
   const btn = (active: boolean) => `toolbar-btn${active ? ' active' : ''}`;
 
   const setLink = () => {
@@ -134,6 +138,17 @@ function Toolbar({ editor, onPickImage, uploading }: EditorToolbarProps) {
       >
         🔗
       </button>
+      <span className="emoji-anchor">
+        <button
+          type="button"
+          title="表情"
+          className={btn(emojiOpen)}
+          onClick={onToggleEmoji}
+        >
+          😀
+        </button>
+        {emojiPanel}
+      </span>
       <button
         type="button"
         title="发送图片（也可直接粘贴/拖拽到输入框）"
@@ -168,6 +183,7 @@ export default function RichTextEditor({ resetKey, onSend, onUploadImage }: Rich
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [sendError, setSendError] = useState('');
+  const [emojiOpen, setEmojiOpen] = useState(false);
 
   // 最新回调通过 ref 转发，保证 TipTap 只创建一次的 keydown 处理器不会拿到旧闭包
   const onSendRef = useRef(onSend);
@@ -188,6 +204,12 @@ export default function RichTextEditor({ resetKey, onSend, onUploadImage }: Rich
     } finally {
       setUploading(false);
     }
+  };
+
+  const insertEmoji = (emoji: string) => {
+    if (!editor) return;
+    // insertContent 会保留焦点，可连续点选多个表情
+    editor.chain().focus().insertContent(emoji).run();
   };
 
   const editor = useEditor({
@@ -257,11 +279,28 @@ export default function RichTextEditor({ resetKey, onSend, onUploadImage }: Rich
   useEffect(() => {
     editor?.commands.clearContent(true);
     setSendError('');
+    setEmojiOpen(false);
   }, [resetKey, editor]);
 
   return (
     <div className="editor-wrap">
-      {editor && <Toolbar editor={editor} onPickImage={() => fileInputRef.current?.click()} uploading={uploading} />}
+      {editor && (
+        <Toolbar
+          editor={editor}
+          onPickImage={() => fileInputRef.current?.click()}
+          onToggleEmoji={() => setEmojiOpen((v) => !v)}
+          emojiOpen={emojiOpen}
+          emojiPanel={
+            emojiOpen ? (
+              <EmojiPicker
+                onPick={insertEmoji}
+                onClose={() => setEmojiOpen(false)}
+              />
+            ) : null
+          }
+          uploading={uploading}
+        />
+      )}
       <div className="editor-scroll">
         <EditorContent editor={editor} />
       </div>

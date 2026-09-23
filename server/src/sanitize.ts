@@ -32,10 +32,11 @@ export function sanitizeContent(dirty: string): string {
   });
 }
 
-/** 判断净化后的内容是否为空（纯空白 / 无实质内容） */
+/** 判断净化后的内容是否为空（纯空白 / 无实质内容，含有效图片标签时不算空） */
 export function isContentEmpty(html: string): boolean {
+  // 净化后保留下来的 <img> 一定带有合法的同源 src，单独发图片属于有效消息
+  if (/<img\b[^>]*\bsrc=/i.test(html)) return false;
   const text = html
-    .replace(/<img\b[^>]*>/gi, ' ') // 图片算有效内容
     .replace(/<[^>]*>/g, '')
     .replace(/&nbsp;/g, ' ')
     .trim();
